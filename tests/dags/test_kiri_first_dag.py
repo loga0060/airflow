@@ -42,7 +42,7 @@ def create_subdag_opt(main_dag):
         )
 
 
-dag_name = "clear_subdag_test_dag"
+dag_name = "clear_subdag_test_dag_kiri"
 
 start_date = datetime.datetime(2016, 1, 1)
 

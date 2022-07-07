@@ -11,7 +11,7 @@ from airflow.providers.microsoft.azure.sensors.data_factory import AzureDataFact
 from airflow.utils.edgemodifier import Label
 
 with DAG(
-    dag_id="example_adf_run_pipeline",
+    dag_id="example_adf_run_pipeline_new",
     start_date=datetime(2021, 8, 13),
     schedule_interval="@daily",
     catchup=False,
@@ -19,8 +19,8 @@ with DAG(
         "retries": 1,
         "retry_delay": timedelta(minutes=3),
         "azure_data_factory_conn_id": "azure_data_factory",
-        "factory_name": "my-data-factory",  # This can also be specified in the ADF connection.
-        "resource_group_name": "my-resource-group",  # This can also be specified in the ADF connection.
+        "factory_name": "airflowdfkiri1",  # This can also be specified in the ADF connection.
+        "resource_group_name": "Airflow",  # This can also be specified in the ADF connection.
     },
     default_view="graph",
 ) as dag:

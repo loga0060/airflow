@@ -14,11 +14,16 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
 
-from airflow_breeze.params.build_ci_params import BuildCiParams
+from typing import TYPE_CHECKING
+
 from airflow_breeze.utils.cache import touch_cache_file
 from airflow_breeze.utils.md5_build_check import calculate_md5_checksum_for_files
 from airflow_breeze.utils.path_utils import BUILD_CACHE_DIR
+
+if TYPE_CHECKING:
+    from airflow_breeze.params.build_ci_params import BuildCiParams
 
 
 def mark_image_as_refreshed(ci_image_params: BuildCiParams):

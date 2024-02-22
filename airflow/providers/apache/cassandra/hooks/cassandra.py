@@ -15,10 +15,11 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-
 """This module contains hook to integrate with Apache Cassandra."""
+from __future__ import annotations
 
-from typing import Any, Dict, Union
+import re
+from typing import Any, Union
 
 from cassandra.auth import PlainTextAuthProvider
 from cassandra.cluster import Cluster, Session
@@ -37,7 +38,7 @@ Policy = Union[DCAwareRoundRobinPolicy, RoundRobinPolicy, TokenAwarePolicy, Whit
 
 class CassandraHook(BaseHook, LoggingMixin):
     """
-    Hook used to interact with Cassandra
+    Hook used to interact with Cassandra.
 
     Contact points can be specified as a comma-separated string in the 'hosts'
     field of the connection.
@@ -47,11 +48,7 @@ class CassandraHook(BaseHook, LoggingMixin):
     If SSL is enabled in Cassandra, pass in a dict in the extra field as kwargs for
     ``ssl.wrap_socket()``. For example::
 
-        {
-            'ssl_options' : {
-                'ca_certs' : PATH_TO_CA_CERTS
-            }
-        }
+        {"ssl_options": {"ca_certs": PATH_TO_CA_CERTS}}
 
     Default load balancing policy is RoundRobinPolicy. To specify a different
     LB policy::
@@ -83,10 +80,10 @@ class CassandraHook(BaseHook, LoggingMixin):
     For details of the Cluster config, see cassandra.cluster.
     """
 
-    conn_name_attr = 'cassandra_conn_id'
-    default_conn_name = 'cassandra_default'
-    conn_type = 'cassandra'
-    hook_name = 'Cassandra'
+    conn_name_attr = "cassandra_conn_id"
+    default_conn_name = "cassandra_default"
+    conn_type = "cassandra"
+    hook_name = "Cassandra"
 
     def __init__(self, cassandra_conn_id: str = default_conn_name):
         super().__init__()
@@ -94,79 +91,79 @@ class CassandraHook(BaseHook, LoggingMixin):
 
         conn_config = {}
         if conn.host:
-            conn_config['contact_points'] = conn.host.split(',')
+            conn_config["contact_points"] = conn.host.split(",")
 
         if conn.port:
-            conn_config['port'] = int(conn.port)
+            conn_config["port"] = int(conn.port)
 
         if conn.login:
-            conn_config['auth_provider'] = PlainTextAuthProvider(username=conn.login, password=conn.password)
+            conn_config["auth_provider"] = PlainTextAuthProvider(username=conn.login, password=conn.password)
 
-        policy_name = conn.extra_dejson.get('load_balancing_policy', None)
-        policy_args = conn.extra_dejson.get('load_balancing_policy_args', {})
+        policy_name = conn.extra_dejson.get("load_balancing_policy", None)
+        policy_args = conn.extra_dejson.get("load_balancing_policy_args", {})
         lb_policy = self.get_lb_policy(policy_name, policy_args)
         if lb_policy:
-            conn_config['load_balancing_policy'] = lb_policy
+            conn_config["load_balancing_policy"] = lb_policy
 
-        cql_version = conn.extra_dejson.get('cql_version', None)
+        cql_version = conn.extra_dejson.get("cql_version", None)
         if cql_version:
-            conn_config['cql_version'] = cql_version
+            conn_config["cql_version"] = cql_version
 
-        ssl_options = conn.extra_dejson.get('ssl_options', None)
+        ssl_options = conn.extra_dejson.get("ssl_options", None)
         if ssl_options:
-            conn_config['ssl_options'] = ssl_options
+            conn_config["ssl_options"] = ssl_options
 
-        protocol_version = conn.extra_dejson.get('protocol_version', None)
+        protocol_version = conn.extra_dejson.get("protocol_version", None)
         if protocol_version:
-            conn_config['protocol_version'] = protocol_version
+            conn_config["protocol_version"] = protocol_version
 
         self.cluster = Cluster(**conn_config)
         self.keyspace = conn.schema
         self.session = None
 
     def get_conn(self) -> Session:
-        """Returns a cassandra Session object"""
+        """Return a cassandra Session object."""
         if self.session and not self.session.is_shutdown:
             return self.session
         self.session = self.cluster.connect(self.keyspace)
         return self.session
 
     def get_cluster(self) -> Cluster:
-        """Returns Cassandra cluster."""
+        """Return Cassandra cluster."""
         return self.cluster
 
     def shutdown_cluster(self) -> None:
-        """Closes all sessions and connections associated with this Cluster."""
+        """Close all sessions and connections associated with this Cluster."""
         if not self.cluster.is_shutdown:
             self.cluster.shutdown()
 
     @staticmethod
-    def get_lb_policy(policy_name: str, policy_args: Dict[str, Any]) -> Policy:
+    def get_lb_policy(policy_name: str, policy_args: dict[str, Any]) -> Policy:
         """
-        Creates load balancing policy.
+        Create load balancing policy.
 
         :param policy_name: Name of the policy to use.
         :param policy_args: Parameters for the policy.
         """
-        if policy_name == 'DCAwareRoundRobinPolicy':
-            local_dc = policy_args.get('local_dc', '')
-            used_hosts_per_remote_dc = int(policy_args.get('used_hosts_per_remote_dc', 0))
+        if policy_name == "DCAwareRoundRobinPolicy":
+            local_dc = policy_args.get("local_dc", "")
+            used_hosts_per_remote_dc = int(policy_args.get("used_hosts_per_remote_dc", 0))
             return DCAwareRoundRobinPolicy(local_dc, used_hosts_per_remote_dc)
 
-        if policy_name == 'WhiteListRoundRobinPolicy':
-            hosts = policy_args.get('hosts')
+        if policy_name == "WhiteListRoundRobinPolicy":
+            hosts = policy_args.get("hosts")
             if not hosts:
-                raise Exception('Hosts must be specified for WhiteListRoundRobinPolicy')
+                raise Exception("Hosts must be specified for WhiteListRoundRobinPolicy")
             return WhiteListRoundRobinPolicy(hosts)
 
-        if policy_name == 'TokenAwarePolicy':
+        if policy_name == "TokenAwarePolicy":
             allowed_child_policies = (
-                'RoundRobinPolicy',
-                'DCAwareRoundRobinPolicy',
-                'WhiteListRoundRobinPolicy',
+                "RoundRobinPolicy",
+                "DCAwareRoundRobinPolicy",
+                "WhiteListRoundRobinPolicy",
             )
-            child_policy_name = policy_args.get('child_load_balancing_policy', 'RoundRobinPolicy')
-            child_policy_args = policy_args.get('child_load_balancing_policy_args', {})
+            child_policy_name = policy_args.get("child_load_balancing_policy", "RoundRobinPolicy")
+            child_policy_args = policy_args.get("child_load_balancing_policy_args", {})
             if child_policy_name not in allowed_child_policies:
                 return TokenAwarePolicy(RoundRobinPolicy())
             child_policy = CassandraHook.get_lb_policy(child_policy_name, child_policy_args)
@@ -177,28 +174,37 @@ class CassandraHook(BaseHook, LoggingMixin):
 
     def table_exists(self, table: str) -> bool:
         """
-        Checks if a table exists in Cassandra
+        Check if a table exists in Cassandra.
 
         :param table: Target Cassandra table.
                       Use dot notation to target a specific keyspace.
         """
         keyspace = self.keyspace
-        if '.' in table:
-            keyspace, table = table.split('.', 1)
+        if "." in table:
+            keyspace, table = table.split(".", 1)
         cluster_metadata = self.get_conn().cluster.metadata
         return keyspace in cluster_metadata.keyspaces and table in cluster_metadata.keyspaces[keyspace].tables
 
-    def record_exists(self, table: str, keys: Dict[str, str]) -> bool:
+    @staticmethod
+    def _sanitize_input(input_string: str) -> str:
+        if re.match(r"^\w+$", input_string):
+            return input_string
+        else:
+            raise ValueError(f"Invalid input: {input_string}")
+
+    def record_exists(self, table: str, keys: dict[str, str]) -> bool:
         """
-        Checks if a record exists in Cassandra
+        Check if a record exists in Cassandra.
 
         :param table: Target Cassandra table.
                       Use dot notation to target a specific keyspace.
         :param keys: The keys and their values to check the existence.
         """
-        keyspace = self.keyspace
-        if '.' in table:
-            keyspace, table = table.split('.', 1)
+        keyspace = self._sanitize_input(self.keyspace) if self.keyspace else self.keyspace
+        if "." in table:
+            keyspace, table = map(self._sanitize_input, table.split(".", 1))
+        else:
+            table = self._sanitize_input(table)
         ks_str = " AND ".join(f"{key}=%({key})s" for key in keys)
         query = f"SELECT * FROM {keyspace}.{table} WHERE {ks_str}"
         try:

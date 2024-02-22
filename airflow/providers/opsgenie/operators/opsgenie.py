@@ -15,8 +15,9 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-#
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Sequence
 
 from airflow.models import BaseOperator
 from airflow.providers.opsgenie.hooks.opsgenie import OpsgenieAlertHook
@@ -28,6 +29,7 @@ if TYPE_CHECKING:
 class OpsgenieCreateAlertOperator(BaseOperator):
     """
     This operator allows you to post alerts to Opsgenie.
+
     Accepts a connection that has an Opsgenie API key as the connection's password.
     This operator sets the domain to conn_id.host, and if not set will default
     to ``https://api.opsgenie.com``.
@@ -59,25 +61,25 @@ class OpsgenieCreateAlertOperator(BaseOperator):
     :param note: Additional note that will be added while creating the alert. (templated)
     """
 
-    template_fields: Sequence[str] = ('message', 'alias', 'description', 'entity', 'priority', 'note')
+    template_fields: Sequence[str] = ("message", "alias", "description", "entity", "priority", "note")
 
     def __init__(
         self,
         *,
         message: str,
-        opsgenie_conn_id: str = 'opsgenie_default',
-        alias: Optional[str] = None,
-        description: Optional[str] = None,
-        responders: Optional[List[dict]] = None,
-        visible_to: Optional[List[dict]] = None,
-        actions: Optional[List[str]] = None,
-        tags: Optional[List[str]] = None,
-        details: Optional[dict] = None,
-        entity: Optional[str] = None,
-        source: Optional[str] = None,
-        priority: Optional[str] = None,
-        user: Optional[str] = None,
-        note: Optional[str] = None,
+        opsgenie_conn_id: str = "opsgenie_default",
+        alias: str | None = None,
+        description: str | None = None,
+        responders: list[dict] | None = None,
+        visible_to: list[dict] | None = None,
+        actions: list[str] | None = None,
+        tags: list[str] | None = None,
+        details: dict | None = None,
+        entity: str | None = None,
+        source: str | None = None,
+        priority: str | None = None,
+        user: str | None = None,
+        note: str | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -96,12 +98,13 @@ class OpsgenieCreateAlertOperator(BaseOperator):
         self.priority = priority
         self.user = user
         self.note = note
-        self.hook: Optional[OpsgenieAlertHook] = None
+        self.hook: OpsgenieAlertHook | None = None
 
-    def _build_opsgenie_payload(self) -> Dict[str, Any]:
+    def _build_opsgenie_payload(self) -> dict[str, Any]:
         """
-        Construct the Opsgenie JSON payload. All relevant parameters are combined here
-        to a valid Opsgenie JSON payload.
+        Construct the Opsgenie JSON payload.
+
+        All relevant parameters are combined here to a valid Opsgenie JSON payload.
 
         :return: Opsgenie payload (dict) to send
         """
@@ -127,8 +130,8 @@ class OpsgenieCreateAlertOperator(BaseOperator):
                 payload[key] = val
         return payload
 
-    def execute(self, context: 'Context') -> None:
-        """Call the OpsgenieAlertHook to post message"""
+    def execute(self, context: Context) -> None:
+        """Call the OpsgenieAlertHook to post message."""
         self.hook = OpsgenieAlertHook(self.opsgenie_conn_id)
         self.hook.create_alert(self._build_opsgenie_payload())
 
@@ -136,6 +139,7 @@ class OpsgenieCreateAlertOperator(BaseOperator):
 class OpsgenieCloseAlertOperator(BaseOperator):
     """
     This operator allows you to close alerts to Opsgenie.
+
     Accepts a connection that has an Opsgenie API key as the connection's password.
     This operator sets the domain to conn_id.host, and if not set will default
     to ``https://api.opsgenie.com``.
@@ -161,12 +165,12 @@ class OpsgenieCloseAlertOperator(BaseOperator):
         self,
         *,
         identifier: str,
-        opsgenie_conn_id: str = 'opsgenie_default',
-        identifier_type: Optional[str] = None,
-        user: Optional[str] = None,
-        note: Optional[str] = None,
-        source: Optional[str] = None,
-        close_alert_kwargs: Optional[dict] = None,
+        opsgenie_conn_id: str = "opsgenie_default",
+        identifier_type: str | None = None,
+        user: str | None = None,
+        note: str | None = None,
+        source: str | None = None,
+        close_alert_kwargs: dict | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -178,12 +182,13 @@ class OpsgenieCloseAlertOperator(BaseOperator):
         self.note = note
         self.source = source
         self.close_alert_kwargs = close_alert_kwargs
-        self.hook: Optional[OpsgenieAlertHook] = None
+        self.hook: OpsgenieAlertHook | None = None
 
-    def _build_opsgenie_close_alert_payload(self) -> Dict[str, Any]:
+    def _build_opsgenie_close_alert_payload(self) -> dict[str, Any]:
         """
-        Construct the Opsgenie JSON payload. All relevant parameters are combined here
-        to a valid Opsgenie JSON payload.
+        Construct the Opsgenie JSON payload.
+
+        All relevant parameters are combined here to a valid Opsgenie JSON payload.
 
         :return: Opsgenie close alert payload (dict) to send
         """
@@ -199,8 +204,8 @@ class OpsgenieCloseAlertOperator(BaseOperator):
                 payload[key] = val
         return payload
 
-    def execute(self, context: 'Context') -> None:
-        """Call the OpsgenieAlertHook to close alert"""
+    def execute(self, context: Context) -> None:
+        """Call the OpsgenieAlertHook to close alert."""
         self.hook = OpsgenieAlertHook(self.opsgenie_conn_id)
         self.hook.close_alert(
             identifier=self.identifier,
@@ -213,6 +218,7 @@ class OpsgenieCloseAlertOperator(BaseOperator):
 class OpsgenieDeleteAlertOperator(BaseOperator):
     """
     This operator allows you to delete alerts in Opsgenie.
+
     Accepts a connection that has an Opsgenie API key as the connection's password.
     This operator sets the domain to conn_id.host, and if not set will default
     to ``https://api.opsgenie.com``.
@@ -232,16 +238,16 @@ class OpsgenieDeleteAlertOperator(BaseOperator):
     :param source: Display name of the request source
     """
 
-    template_fields: Sequence[str] = ('identifier',)
+    template_fields: Sequence[str] = ("identifier",)
 
     def __init__(
         self,
         *,
         identifier: str,
-        opsgenie_conn_id: str = 'opsgenie_default',
-        identifier_type: Optional[str] = None,
-        user: Optional[str] = None,
-        source: Optional[str] = None,
+        opsgenie_conn_id: str = "opsgenie_default",
+        identifier_type: str | None = None,
+        user: str | None = None,
+        source: str | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -252,8 +258,8 @@ class OpsgenieDeleteAlertOperator(BaseOperator):
         self.user = user
         self.source = source
 
-    def execute(self, context: 'Context') -> None:
-        """Call the OpsgenieAlertHook to delete alert"""
+    def execute(self, context: Context) -> None:
+        """Call the OpsgenieAlertHook to delete alert."""
         hook = OpsgenieAlertHook(self.opsgenie_conn_id)
         hook.delete_alert(
             identifier=self.identifier,

@@ -27,7 +27,7 @@ consists of multiple machines (specifically, Compute Engine instances) grouped t
 Prerequisite Tasks
 ^^^^^^^^^^^^^^^^^^
 
-.. include::/operators/_partials/prerequisite_tasks.rst
+.. include:: /operators/_partials/prerequisite_tasks.rst
 
 Manage GKE cluster
 ^^^^^^^^^^^^^^^^^^
@@ -59,6 +59,37 @@ definition, is required when creating a cluster with
     :start-after: [START howto_operator_gke_create_cluster]
     :end-before: [END howto_operator_gke_create_cluster]
 
+You can use deferrable mode for this action in order to run the operator asynchronously. It will give you a
+possibility to free up the worker when it knows it has to wait, and hand off the job of resuming Operator to a Trigger.
+As a result, while it is suspended (deferred), it is not taking up a worker slot and your cluster will have a
+lot less resources wasted on idle Operators or Sensors:
+
+.. exampleinclude:: /../../tests/system/providers/google/cloud/kubernetes_engine/example_kubernetes_engine_async.py
+    :language: python
+    :dedent: 4
+    :start-after: [START howto_operator_gke_create_cluster_async]
+    :end-before: [END howto_operator_gke_create_cluster_async]
+
+
+.. _howto/operator:GKEStartKueueInsideClusterOperator:
+
+Install Kueue of specific version inside Cluster
+""""""""""""""""""""""""""""""""""""""""""""""""
+
+Kueue is a Cloud Native Job scheduler that works with the default Kubernetes scheduler, the Job controller,
+and the cluster autoscaler to provide an end-to-end batch system. Kueue implements Job queueing, deciding when
+Jobs should wait and when they should start, based on quotas and a hierarchy for sharing resources fairly among teams.
+Kueue supports Autopilot clusters, Standard GKE with Node Auto-provisioning and regular autoscaled node pools.
+To install and use Kueue on your cluster with the help of
+:class:`~airflow.providers.google.cloud.operators.kubernetes_engine.GKEStartKueueInsideClusterOperator`
+as shown in this example:
+
+.. exampleinclude:: /../../tests/system/providers/google/cloud/kubernetes_engine/example_kubernetes_engine_kueue.py
+    :language: python
+    :start-after: [START howto_operator_gke_install_kueue]
+    :end-before: [END howto_operator_gke_install_kueue]
+
+
 .. _howto/operator:GKEDeleteClusterOperator:
 
 Delete GKE cluster
@@ -74,6 +105,17 @@ This would also delete all the nodes allocated to the cluster.
     :start-after: [START howto_operator_gke_delete_cluster]
     :end-before: [END howto_operator_gke_delete_cluster]
 
+You can use deferrable mode for this action in order to run the operator asynchronously. It will give you a
+possibility to free up the worker when it knows it has to wait, and hand off the job of resuming Operator to a Trigger.
+As a result, while it is suspended (deferred), it is not taking up a worker slot and your cluster will have a
+lot less resources wasted on idle Operators or Sensors:
+
+.. exampleinclude:: /../../tests/system/providers/google/cloud/kubernetes_engine/example_kubernetes_engine_async.py
+    :language: python
+    :dedent: 4
+    :start-after: [START howto_operator_gke_delete_cluster_async]
+    :end-before: [END howto_operator_gke_delete_cluster_async]
+
 Manage workloads on a GKE cluster
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -88,7 +130,7 @@ Run a Pod on a GKE cluster
 
 There are two operators available in order to run a pod on a GKE cluster:
 
-* :class:`~airflow.providers.cncf.kubernetes.operators.kubernetes_pod.KubernetesPodOperator`
+* :class:`~airflow.providers.cncf.kubernetes.operators.pod.KubernetesPodOperator`
 * :class:`~airflow.providers.google.cloud.operators.kubernetes_engine.GKEStartPodOperator`
 
 ``GKEStartPodOperator`` extends ``KubernetesPodOperator`` to provide authorization using Google Cloud credentials.
@@ -108,11 +150,19 @@ Private clusters have two unique endpoint values: ``privateEndpoint``, which is 
 sets the external IP address as the endpoint by default. If you prefer to use the internal IP as the
 endpoint, you need to set ``use_internal_ip`` parameter to ``True``.
 
+Using with Autopilot (serverless) cluster
+'''''''''''''''''''''''''''''''''''''''''
+
+When running on serverless cluster like GKE Autopilot, the pod startup can sometimes take longer due to cold start.
+During the pod startup, the status is checked in regular short intervals and warning messages are emitted if the pod
+has not yet started. You can increase this interval length via the ``startup_check_interval_seconds`` parameter, with
+recommendation of 60 seconds.
+
 Use of XCom
 '''''''''''
 
 We can enable the usage of :ref:`XCom <concepts:xcom>` on the operator. This works by launching a sidecar container
-with the pod specified. The sidecar is automatically mounted when the XCom usage is specified and it's mount point
+with the pod specified. The sidecar is automatically mounted when the XCom usage is specified and its mount point
 is the path ``/airflow/xcom``. To provide values to the XCom, ensure your Pod writes it into a file called
 ``return.json`` in the sidecar. The contents of this can then be used downstream in your DAG.
 Here is an example of it being used:
@@ -130,6 +180,38 @@ And then use it in other operators:
     :dedent: 4
     :start-after: [START howto_operator_gke_xcom_result]
     :end-before: [END howto_operator_gke_xcom_result]
+
+You can use deferrable mode for this action in order to run the operator asynchronously. It will give you a
+possibility to free up the worker when it knows it has to wait, and hand off the job of resuming Operator to a Trigger.
+As a result, while it is suspended (deferred), it is not taking up a worker slot and your cluster will have a
+lot less resources wasted on idle Operators or Sensors:
+
+.. exampleinclude:: /../../tests/system/providers/google/cloud/kubernetes_engine/example_kubernetes_engine_async.py
+    :language: python
+    :dedent: 4
+    :start-after: [START howto_operator_gke_start_pod_xcom_async]
+    :end-before: [END howto_operator_gke_start_pod_xcom_async]
+
+
+.. _howto/operator:GKEStartJobOperator:
+
+Run a Job on a GKE cluster
+""""""""""""""""""""""""""
+
+There are two operators available in order to run a job on a GKE cluster:
+
+* :class:`~airflow.providers.cncf.kubernetes.operators.job.KubernetesJobOperator`
+* :class:`~airflow.providers.google.cloud.operators.kubernetes_engine.GKEStartJobOperator`
+
+``GKEStartJobOperator`` extends ``KubernetesJobOperator`` to provide authorization using Google Cloud credentials.
+There is no need to manage the ``kube_config`` file, as it will be generated automatically.
+All Kubernetes parameters (except ``config_file``) are also valid for the ``GKEStartJobOperator``.
+
+.. exampleinclude:: /../../tests/system/providers/google/cloud/kubernetes_engine/example_kubernetes_engine_job.py
+    :language: python
+    :dedent: 4
+    :start-after: [START howto_operator_gke_start_job]
+    :end-before: [END howto_operator_gke_start_job]
 
 Reference
 ^^^^^^^^^

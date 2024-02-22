@@ -15,12 +15,9 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""
-This module contains sensor that check the existence
-of a record in a Cassandra cluster.
-"""
+from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, Sequence
+from typing import TYPE_CHECKING, Any, Sequence
 
 from airflow.providers.apache.cassandra.hooks.cassandra import CassandraHook
 from airflow.sensors.base import BaseSensorOperator
@@ -41,10 +38,12 @@ class CassandraRecordSensor(BaseSensorOperator):
     primary keys 'p1' and 'p2' to be populated in keyspace 'k' and table 't',
     instantiate it as follows:
 
-    >>> cassandra_sensor = CassandraRecordSensor(table="k.t",
-    ...                                          keys={"p1": "v1", "p2": "v2"},
-    ...                                          cassandra_conn_id="cassandra_default",
-    ...                                          task_id="cassandra_sensor")
+    >>> cassandra_sensor = CassandraRecordSensor(
+    ...     table="k.t",
+    ...     keys={"p1": "v1", "p2": "v2"},
+    ...     cassandra_conn_id="cassandra_default",
+    ...     task_id="cassandra_sensor",
+    ... )
 
     :param table: Target Cassandra table.
         Use dot notation to target a specific keyspace.
@@ -53,12 +52,12 @@ class CassandraRecordSensor(BaseSensorOperator):
         when connecting to Cassandra cluster
     """
 
-    template_fields: Sequence[str] = ('table', 'keys')
+    template_fields: Sequence[str] = ("table", "keys")
 
     def __init__(
         self,
         *,
-        keys: Dict[str, str],
+        keys: dict[str, str],
         table: str,
         cassandra_conn_id: str = CassandraHook.default_conn_name,
         **kwargs: Any,
@@ -68,7 +67,7 @@ class CassandraRecordSensor(BaseSensorOperator):
         self.table = table
         self.keys = keys
 
-    def poke(self, context: "Context") -> bool:
-        self.log.info('Sensor check existence of record: %s', self.keys)
+    def poke(self, context: Context) -> bool:
+        self.log.info("Sensor check existence of record: %s", self.keys)
         hook = CassandraHook(self.cassandra_conn_id)
         return hook.record_exists(self.table, self.keys)

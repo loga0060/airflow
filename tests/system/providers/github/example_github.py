@@ -14,15 +14,16 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
 
 import logging
 import os
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from github import GithubException
 
-from airflow import AirflowException
+from airflow.exceptions import AirflowException
 from airflow.models.dag import DAG
 from airflow.providers.github.operators.github import GithubOperator
 from airflow.providers.github.sensors.github import GithubSensor, GithubTagSensor
@@ -34,15 +35,14 @@ DAG_ID = "example_github_operator"
 with DAG(
     DAG_ID,
     start_date=datetime(2021, 1, 1),
-    tags=['example'],
+    tags=["example"],
     catchup=False,
 ) as dag:
-
     # [START howto_tag_sensor_github]
 
     tag_sensor = GithubTagSensor(
-        task_id='example_tag_sensor',
-        tag_name='v1.0',
+        task_id="example_tag_sensor",
+        tag_name="v1.0",
         repository_name="apache/airflow",
         timeout=60,
         poke_interval=10,
@@ -52,7 +52,7 @@ with DAG(
 
     # [START howto_sensor_github]
 
-    def tag_checker(repo: Any, tag_name: str) -> Optional[bool]:
+    def tag_checker(repo: Any, tag_name: str) -> bool | None:
         result = None
         try:
             if repo is not None and tag_name is not None:
@@ -60,16 +60,16 @@ with DAG(
                 result = tag_name in all_tags
 
         except GithubException as github_error:  # type: ignore[misc]
-            raise AirflowException(f"Failed to execute GithubSensor, error: {str(github_error)}")
+            raise AirflowException(f"Failed to execute GithubSensor, error: {github_error}")
         except Exception as e:
-            raise AirflowException(f"GitHub operator error: {str(e)}")
+            raise AirflowException(f"GitHub operator error: {e}")
         return result
 
     github_sensor = GithubSensor(
-        task_id='example_sensor',
+        task_id="example_sensor",
         method_name="get_repo",
-        method_params={'full_name_or_id': "apache/airflow"},
-        result_processor=lambda repo: tag_checker(repo, 'v1.0'),
+        method_params={"full_name_or_id": "apache/airflow"},
+        result_processor=lambda repo: tag_checker(repo, "v1.0"),
         timeout=60,
         poke_interval=10,
     )
@@ -79,9 +79,8 @@ with DAG(
     # [START howto_operator_list_repos_github]
 
     github_list_repos = GithubOperator(
-        task_id='github_list_repos',
+        task_id="github_list_repos",
         github_method="get_user",
-        github_method_args={},
         result_processor=lambda user: logging.info(list(user.get_repos())),
     )
 
@@ -90,9 +89,9 @@ with DAG(
     # [START howto_operator_list_tags_github]
 
     list_repo_tags = GithubOperator(
-        task_id='list_repo_tags',
+        task_id="list_repo_tags",
         github_method="get_repo",
-        github_method_args={'full_name_or_id': 'apache/airflow'},
+        github_method_args={"full_name_or_id": "apache/airflow"},
         result_processor=lambda repo: logging.info(list(repo.get_tags())),
     )
 

@@ -15,7 +15,9 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-from typing import TYPE_CHECKING, List, Optional, Sequence, Union
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Sequence
 
 from airflow.models import BaseOperator
 from airflow.providers.dingding.hooks.dingding import DingdingHook
@@ -26,31 +28,32 @@ if TYPE_CHECKING:
 
 class DingdingOperator(BaseOperator):
     """
-    This operator allows you send Dingding message using Dingding custom bot.
-    Get Dingding token from conn_id.password. And prefer set domain to
-    conn_id.host, if not will use default ``https://oapi.dingtalk.com``.
+    This operator allows to send DingTalk message using Custom Robot API.
 
-    For more detail message in
-    `Dingding custom bot <https://open-doc.dingtalk.com/microapp/serverapi2/qf2nxq>`_
+    .. seealso::
+        For more information on how to use this operator, take a look at the guide:
+        :ref:`howto/operator:DingdingOperator`
 
-    :param dingding_conn_id: The name of the Dingding connection to use
+    :param dingding_conn_id: Dingding connection id that has access token in the password field,
+        and optional host name in host field, if host not set than default
+        ``https://oapi.dingtalk.com`` will use.
     :param message_type: Message type you want to send to Dingding, support five type so far
-        including text, link, markdown, actionCard, feedCard
-    :param message: The message send to Dingding chat group
+        including ``text``, ``link``, ``markdown``, ``actionCard``, ``feedCard``.
+    :param message: The message send to chat group
     :param at_mobiles: Remind specific users with this message
     :param at_all: Remind all people in group or not. If True, will overwrite ``at_mobiles``
     """
 
-    template_fields: Sequence[str] = ('message',)
-    ui_color = '#4ea4d4'  # Dingding icon color
+    template_fields: Sequence[str] = ("message",)
+    ui_color = "#4ea4d4"  # Operator icon color
 
     def __init__(
         self,
         *,
-        dingding_conn_id: str = 'dingding_default',
-        message_type: str = 'text',
-        message: Union[str, dict, None] = None,
-        at_mobiles: Optional[List[str]] = None,
+        dingding_conn_id: str = "dingding_default",
+        message_type: str = "text",
+        message: str | dict | None = None,
+        at_mobiles: list[str] | None = None,
         at_all: bool = False,
         **kwargs,
     ) -> None:
@@ -61,8 +64,8 @@ class DingdingOperator(BaseOperator):
         self.at_mobiles = at_mobiles
         self.at_all = at_all
 
-    def execute(self, context: 'Context') -> None:
-        self.log.info('Sending Dingding message.')
+    def execute(self, context: Context) -> None:
+        self.log.info("Sending Dingding message.")
         hook = DingdingHook(
             self.dingding_conn_id, self.message_type, self.message, self.at_mobiles, self.at_all
         )

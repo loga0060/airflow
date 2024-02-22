@@ -15,7 +15,9 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-from typing import TYPE_CHECKING, Optional, Sequence
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Sequence
 
 from airflow.models import BaseOperator
 from airflow.providers.oracle.hooks.oracle import OracleHook
@@ -28,7 +30,6 @@ class OracleToOracleOperator(BaseOperator):
     """
     Moves data from Oracle to Oracle.
 
-
     :param oracle_destination_conn_id: destination Oracle connection.
     :param destination_table: destination table to insert rows.
     :param oracle_source_conn_id: :ref:`Source Oracle connection <howto/connection:oracle>`.
@@ -38,9 +39,9 @@ class OracleToOracleOperator(BaseOperator):
     :param rows_chunk: number of rows per chunk to commit.
     """
 
-    template_fields: Sequence[str] = ('source_sql', 'source_sql_params')
+    template_fields: Sequence[str] = ("source_sql", "source_sql_params")
     template_fields_renderers = {"source_sql": "sql", "source_sql_params": "py"}
-    ui_color = '#e08c8c'
+    ui_color = "#e08c8c"
 
     def __init__(
         self,
@@ -49,7 +50,7 @@ class OracleToOracleOperator(BaseOperator):
         destination_table: str,
         oracle_source_conn_id: str,
         source_sql: str,
-        source_sql_params: Optional[dict] = None,
+        source_sql_params: dict | None = None,
         rows_chunk: int = 5000,
         **kwargs,
     ) -> None:
@@ -68,22 +69,20 @@ class OracleToOracleOperator(BaseOperator):
             cursor = src_conn.cursor()
             self.log.info("Querying data from source: %s", self.oracle_source_conn_id)
             cursor.execute(self.source_sql, self.source_sql_params)
-            target_fields = list(map(lambda field: field[0], cursor.description))
+            target_fields = [field[0] for field in cursor.description]
 
             rows_total = 0
-            rows = cursor.fetchmany(self.rows_chunk)
-            while len(rows) > 0:
-                rows_total += len(rows)
+            for rows in iter(lambda: cursor.fetchmany(self.rows_chunk), []):
                 dest_hook.bulk_insert_rows(
                     self.destination_table, rows, target_fields=target_fields, commit_every=self.rows_chunk
                 )
-                rows = cursor.fetchmany(self.rows_chunk)
+                rows_total += len(rows)
                 self.log.info("Total inserted: %s rows", rows_total)
 
             self.log.info("Finished data transfer.")
             cursor.close()
 
-    def execute(self, context: 'Context') -> None:
+    def execute(self, context: Context) -> None:
         src_hook = OracleHook(oracle_conn_id=self.oracle_source_conn_id)
         dest_hook = OracleHook(oracle_conn_id=self.oracle_destination_conn_id)
         self._execute(src_hook, dest_hook, context)

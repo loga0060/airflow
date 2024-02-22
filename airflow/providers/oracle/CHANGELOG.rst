@@ -21,8 +21,240 @@
    and you want to add an explanation to the users on how they are supposed to deal with them.
    The changelog is updated and maintained semi-automatically by release manager.
 
+``apache-airflow-providers-oracle``
+
+
 Changelog
 ---------
+
+3.9.2
+.....
+
+Misc
+~~~~
+
+* ``feat: Switch all class, functions, methods deprecations to decorators (#36876)``
+
+.. Below changes are excluded from the changelog. Move them to
+   appropriate section above if needed. Do not delete the lines(!):
+   * ``Add docs for RC2 wave of providers for 2nd round of Jan 2024 (#37019)``
+   * ``Prepare docs 2nd wave of Providers January 2024 (#36945)``
+   * ``Standardize airflow build process and switch to Hatchling build backend (#36537)``
+   * ``Prepare docs 1st wave of Providers January 2024 (#36640)``
+   * ``Speed up autocompletion of Breeze by simplifying provider state (#36499)``
+
+3.9.1
+.....
+
+Bug Fixes
+~~~~~~~~~
+
+* ``Return common data structure in DBApi derived classes``
+
+.. Below changes are excluded from the changelog. Move them to
+   appropriate section above if needed. Do not delete the lines(!):
+
+3.9.0
+.....
+
+.. note::
+  This release of provider is only available for Airflow 2.6+ as explained in the
+  `Apache Airflow providers support policy <https://github.com/apache/airflow/blob/main/PROVIDERS.rst#minimum-supported-version-of-airflow-for-community-managed-providers>`_.
+
+Misc
+~~~~
+
+* ``Bump minimum Airflow version in providers to Airflow 2.6.0 (#36017)``
+
+.. Below changes are excluded from the changelog. Move them to
+   appropriate section above if needed. Do not delete the lines(!):
+   * ``Fix and reapply templates for provider documentation (#35686)``
+   * ``Prepare docs 3rd wave of Providers October 2023 - FIX (#35233)``
+   * ``Prepare docs 2nd wave of Providers November 2023 (#35836)``
+   * ``Use reproducible builds for provider packages (#35693)``
+   * ``Prepare docs 1st wave of Providers November 2023 (#35537)``
+   * ``Prepare docs 3rd wave of Providers October 2023 (#35187)``
+   * ``Pre-upgrade 'ruff==0.0.292' changes in providers (#35053)``
+   * ``Upgrade pre-commits (#35033)``
+
+3.8.0
+.....
+
+.. note::
+  This release of provider is only available for Airflow 2.5+ as explained in the
+  `Apache Airflow providers support policy <https://github.com/apache/airflow/blob/main/PROVIDERS.rst#minimum-supported-version-of-airflow-for-community-managed-providers>`_.
+
+Misc
+~~~~
+
+* ``Bump min airflow version of providers (#34728)``
+
+
+.. Below changes are excluded from the changelog. Move them to
+   appropriate section above if needed. Do not delete the lines(!):
+   * ``Refactor usage of str() in providers (#34320)``
+   * ``Refactor shorter defaults in providers (#34347)``
+
+3.7.4
+.....
+
+Misc
+~~~~
+
+* ``Refactor: Consolidate "import numpy as np" (#34111)``
+* ``Combine similar if logics in providers (#33987)``
+* ``remove unnecessary and rewrite it using list in providers (#33763)``
+
+3.7.3
+.....
+
+Misc
+~~~~~
+
+* ``Replace strftime with f-strings where nicer (#33455)``
+* ``Simplify conditions on len() in other providers (#33569)``
+* ``Refactor: Simplify code in smaller providers (#33234)``
+* ``Avoid importing pandas and numpy in runtime and module level (#33483)``
+
+3.7.2
+.....
+
+Misc
+~~~~
+
+* ``Add deprecation info to the providers modules and classes docstring (#32536)``
+
+.. Below changes are excluded from the changelog. Move them to
+   appropriate section above if needed. Do not delete the lines(!):
+   * ``Prepare docs for July 2023 wave of Providers (RC2) (#32381)``
+   * ``Remove spurious headers for provider changelogs (#32373)``
+   * ``Prepare docs for July 2023 wave of Providers (#32298)``
+   * ``Improve provider documentation and README structure (#32125)``
+   * ``D205 Support - Auto-fixes and Stragglers (#32212)``
+
+3.7.1
+.....
+
+.. note::
+  This release dropped support for Python 3.7
+
+Misc
+~~~~
+
+* ``Add note about dropping Python 3.7 for providers (#32015)``
+
+.. Below changes are excluded from the changelog. Move them to
+   appropriate section above if needed. Do not delete the lines(!):
+   * ``Improve docstrings in providers (#31681)``
+   * ``Add D400 pydocstyle check - Providers (#31427)``
+
+3.7.0
+.....
+
+.. note::
+  This release of provider is only available for Airflow 2.4+ as explained in the
+  `Apache Airflow providers support policy <https://github.com/apache/airflow/blob/main/PROVIDERS.rst#minimum-supported-version-of-airflow-for-community-managed-providers>`_.
+
+Misc
+~~~~
+
+* ``Bump minimum Airflow version in providers (#30917)``
+* ``Add docs for Oracle operators (#30979)``
+* ``Fix deprecated import in Oracle example (#31166)``
+
+.. Below changes are excluded from the changelog. Move them to
+   appropriate section above if needed. Do not delete the lines(!):
+   * ``Use 'AirflowProviderDeprecationWarning' in providers (#30975)``
+   * ``Add full automation for min Airflow version for providers (#30994)``
+   * ``Add mechanism to suspend providers (#30422)``
+   * ``Use '__version__' in providers not 'version' (#31393)``
+   * ``Fixing circular import error in providers caused by airflow version check (#31379)``
+   * ``Prepare docs for May 2023 wave of Providers (#31252)``
+
+3.6.0
+.....
+
+Features
+~~~~~~~~
+* ``XCOM push ORA error code in OracleStoredProcedure (#27319)``
+
+.. Below changes are excluded from the changelog. Move them to
+   appropriate section above if needed. Do not delete the lines(!):
+
+3.5.1
+.....
+
+Bug Fixes
+~~~~~~~~~
+
+* ``Bump common.sql provider to 1.3.1 (#27888)``
+
+.. Below changes are excluded from the changelog. Move them to
+   appropriate section above if needed. Do not delete the lines(!):
+   * ``Prepare for follow-up release for November providers (#27774)``
+
+3.5.0
+.....
+
+.. note::
+  This release of provider is only available for Airflow 2.3+ as explained in the
+  `Apache Airflow providers support policy <https://github.com/apache/airflow/blob/main/PROVIDERS.rst#minimum-supported-version-of-airflow-for-community-managed-providers>`_.
+
+Misc
+~~~~
+
+* ``Move min airflow version to 2.3.0 for all providers (#27196)``
+
+Features
+~~~~~~~~
+
+* ``Add SQLExecuteQueryOperator (#25717)``
+
+.. Below changes are excluded from the changelog. Move them to
+   appropriate section above if needed. Do not delete the lines(!):
+   * ``Enable string normalization in python formatting - providers (#27205)``
+
+3.4.0
+.....
+
+Features
+~~~~~~~~
+
+* ``Add oracledb thick mode support for oracle provider (#26576)``
+
+Misc
+~~~~
+
+* ``Add common-sql lower bound for common-sql (#25789)``
+
+.. Below changes are excluded from the changelog. Move them to
+   appropriate section above if needed. Do not delete the lines(!):
+   * ``Apply PEP-563 (Postponed Evaluation of Annotations) to non-core airflow (#26289)``
+
+
+3.3.0
+.....
+
+Features
+~~~~~~~~
+
+* ``Unify DbApiHook.run() method with the methods which override it (#23971)``
+
+
+3.2.0
+.....
+
+Features
+~~~~~~~~
+
+* ``Move all SQL classes to common-sql provider (#24836)``
+
+
+.. Below changes are excluded from the changelog. Move them to
+   appropriate section above if needed. Do not delete the lines(!):
+   * ``Align Black and blacken-docs configs (#24785)``
+   * ``Move provider dependencies to inside provider folders (#24672)``
+   * ``Remove 'hook-class-names' from provider.yaml (#24702)``
 
 3.1.0
 .....
@@ -38,8 +270,9 @@ Features
 Breaking changes
 ~~~~~~~~~~~~~~~~
 
-* This release of provider is only available for Airflow 2.2+ as explained in the Apache Airflow
-  providers support policy https://github.com/apache/airflow/blob/main/README.md#support-for-providers
+.. note::
+  This release of provider is only available for Airflow 2.2+ as explained in the
+  `Apache Airflow providers support policy <https://github.com/apache/airflow/blob/main/PROVIDERS.rst#minimum-supported-version-of-airflow-for-community-managed-providers>`_.
 
 Features
 ~~~~~~~~

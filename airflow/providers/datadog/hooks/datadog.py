@@ -15,9 +15,10 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
 
 import time
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 from datadog import api, initialize  # type: ignore[attr-defined]
 
@@ -28,8 +29,9 @@ from airflow.utils.log.logging_mixin import LoggingMixin
 
 class DatadogHook(BaseHook, LoggingMixin):
     """
-    Uses datadog API to send metrics of practically anything measurable,
-    so it's possible to track # of db records inserted/deleted, records read
+    Uses datadog API to send metrics of practically anything measurable.
+
+    It's possible to track # of db records inserted/deleted, records read
     from file and many other useful metrics.
 
     Depends on the datadog API, which has to be deployed on the same server where
@@ -38,13 +40,18 @@ class DatadogHook(BaseHook, LoggingMixin):
     :param datadog_conn_id: The connection to datadog, containing metadata for api keys.
     """
 
-    def __init__(self, datadog_conn_id: str = 'datadog_default') -> None:
+    conn_name_attr = "datadog_conn_id"
+    default_conn_name = "datadog_default"
+    conn_type = "datadog"
+    hook_name = "Datadog"
+
+    def __init__(self, datadog_conn_id: str = "datadog_default") -> None:
         super().__init__()
         conn = self.get_connection(datadog_conn_id)
-        self.api_key = conn.extra_dejson.get('api_key', None)
-        self.app_key = conn.extra_dejson.get('app_key', None)
-        self.api_host = conn.extra_dejson.get('api_host', None)
-        self.source_type_name = conn.extra_dejson.get('source_type_name', None)
+        self.api_key = conn.extra_dejson.get("api_key", None)
+        self.app_key = conn.extra_dejson.get("app_key", None)
+        self.api_host = conn.extra_dejson.get("api_host", None)
+        self.source_type_name = conn.extra_dejson.get("source_type_name", None)
 
         # If the host is populated, it will use that hostname instead.
         # for all metric submissions.
@@ -56,22 +63,22 @@ class DatadogHook(BaseHook, LoggingMixin):
         self.log.info("Setting up api keys for Datadog")
         initialize(api_key=self.api_key, app_key=self.app_key, api_host=self.api_host)
 
-    def validate_response(self, response: Dict[str, Any]) -> None:
-        """Validate Datadog response"""
-        if response['status'] != 'ok':
+    def validate_response(self, response: dict[str, Any]) -> None:
+        """Validate Datadog response."""
+        if response["status"] != "ok":
             self.log.error("Datadog returned: %s", response)
             raise AirflowException("Error status received from Datadog")
 
     def send_metric(
         self,
         metric_name: str,
-        datapoint: Union[float, int],
-        tags: Optional[List[str]] = None,
-        type_: Optional[str] = None,
-        interval: Optional[int] = None,
-    ) -> Dict[str, Any]:
+        datapoint: float | int,
+        tags: list[str] | None = None,
+        type_: str | None = None,
+        interval: int | None = None,
+    ) -> dict[str, Any]:
         """
-        Sends a single datapoint metric to DataDog
+        Send a single datapoint metric to Datadog.
 
         :param metric_name: The name of the metric
         :param datapoint: A single integer or float related to the metric
@@ -86,10 +93,9 @@ class DatadogHook(BaseHook, LoggingMixin):
         self.validate_response(response)
         return response
 
-    def query_metric(self, query: str, from_seconds_ago: int, to_seconds_ago: int) -> Dict[str, Any]:
+    def query_metric(self, query: str, from_seconds_ago: int, to_seconds_ago: int) -> dict[str, Any]:
         """
-        Queries datadog for a specific metric, potentially with some
-        function applied to it and returns the results.
+        Query datadog for a metric, potentially with some function applied to it and return the result.
 
         :param query: The datadog query to execute (see datadog docs)
         :param from_seconds_ago: How many seconds ago to start querying for.
@@ -106,19 +112,19 @@ class DatadogHook(BaseHook, LoggingMixin):
         self,
         title: str,
         text: str,
-        aggregation_key: Optional[str] = None,
-        alert_type: Optional[str] = None,
-        date_happened: Optional[int] = None,
-        handle: Optional[str] = None,
-        priority: Optional[str] = None,
-        related_event_id: Optional[int] = None,
-        tags: Optional[List[str]] = None,
-        device_name: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
+        aggregation_key: str | None = None,
+        alert_type: str | None = None,
+        date_happened: int | None = None,
+        handle: str | None = None,
+        priority: str | None = None,
+        related_event_id: int | None = None,
+        tags: list[str] | None = None,
+        device_name: list[str] | None = None,
+    ) -> dict[str, Any]:
         """
-        Posts an event to datadog (processing finished, potentially alerts, other issues)
-        Think about this as a means to maintain persistence of alerts, rather than
-        alerting itself.
+        Post an event to datadog (processing finished, potentially alerts, other issues).
+
+        Think about this as a means to maintain persistence of alerts, rather than alerting itself.
 
         :param title: The title of the event
         :param text: The body of the event (more information)
@@ -151,3 +157,25 @@ class DatadogHook(BaseHook, LoggingMixin):
 
         self.validate_response(response)
         return response
+
+    @classmethod
+    def get_connection_form_widgets(cls) -> dict[str, Any]:
+        """Return connection widgets to add to connection form."""
+        from flask_appbuilder.fieldwidgets import BS3TextFieldWidget
+        from flask_babel import lazy_gettext
+        from wtforms import StringField
+
+        return {
+            "api_host": StringField(lazy_gettext("API endpoint"), widget=BS3TextFieldWidget()),
+            "api_key": StringField(lazy_gettext("API key"), widget=BS3TextFieldWidget()),
+            "app_key": StringField(lazy_gettext("Application key"), widget=BS3TextFieldWidget()),
+            "source_type_name": StringField(lazy_gettext("Source type name"), widget=BS3TextFieldWidget()),
+        }
+
+    @classmethod
+    def get_ui_field_behaviour(cls) -> dict[str, Any]:
+        """Return custom field behaviour."""
+        return {
+            "hidden_fields": ["schema", "login", "password", "port", "extra"],
+            "relabeling": {"host": "Events host name"},
+        }

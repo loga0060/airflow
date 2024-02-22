@@ -14,55 +14,57 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence
+import time
+import warnings
+from functools import cached_property
+from typing import TYPE_CHECKING, Any, Sequence
 
+from airflow.configuration import conf
+from airflow.exceptions import AirflowException
 from airflow.hooks.base import BaseHook
 from airflow.models import BaseOperator, BaseOperatorLink, XCom
 from airflow.providers.microsoft.azure.hooks.data_factory import (
     AzureDataFactoryHook,
     AzureDataFactoryPipelineRunException,
     AzureDataFactoryPipelineRunStatus,
+    get_field,
 )
+from airflow.providers.microsoft.azure.triggers.data_factory import AzureDataFactoryTrigger
+from airflow.utils.log.logging_mixin import LoggingMixin
 
 if TYPE_CHECKING:
-    from airflow.models.taskinstance import TaskInstanceKey
+    from airflow.models.taskinstancekey import TaskInstanceKey
     from airflow.utils.context import Context
 
 
-class AzureDataFactoryPipelineRunLink(BaseOperatorLink):
-    """Constructs a link to monitor a pipeline run in Azure Data Factory."""
+class AzureDataFactoryPipelineRunLink(LoggingMixin, BaseOperatorLink):
+    """Construct a link to monitor a pipeline run in Azure Data Factory."""
 
     name = "Monitor Pipeline Run"
 
     def get_link(
         self,
-        operator,
-        dttm=None,
+        operator: BaseOperator,
         *,
-        ti_key: Optional["TaskInstanceKey"] = None,
+        ti_key: TaskInstanceKey,
     ) -> str:
-        if ti_key is not None:
-            run_id = XCom.get_value(key="run_id", ti_key=ti_key)
-        else:
-            assert dttm
-            run_id = XCom.get_one(
-                key="run_id",
-                dag_id=operator.dag.dag_id,
-                task_id=operator.task_id,
-                execution_date=dttm,
-            )
-
-        conn = BaseHook.get_connection(operator.azure_data_factory_conn_id)
-        subscription_id = conn.extra_dejson["extra__azure_data_factory__subscriptionId"]
+        run_id = XCom.get_value(key="run_id", ti_key=ti_key)
+        conn_id = operator.azure_data_factory_conn_id  # type: ignore
+        conn = BaseHook.get_connection(conn_id)
+        extras = conn.extra_dejson
+        subscription_id = get_field(extras, "subscriptionId") or get_field(
+            extras, "extra__azure__subscriptionId"
+        )
+        if not subscription_id:
+            raise KeyError(f"Param subscriptionId not found in conn_id '{conn_id}'")
         # Both Resource Group Name and Factory Name can either be declared in the Azure Data Factory
         # connection or passed directly to the operator.
-        resource_group_name = operator.resource_group_name or conn.extra_dejson.get(
-            "extra__azure_data_factory__resource_group_name"
+        resource_group_name = operator.resource_group_name or get_field(  # type: ignore
+            extras, "resource_group_name"
         )
-        factory_name = operator.factory_name or conn.extra_dejson.get(
-            "extra__azure_data_factory__factory_name"
-        )
+        factory_name = operator.factory_name or get_field(extras, "factory_name")  # type: ignore
         url = (
             f"https://adf.azure.com/en-us/monitoring/pipelineruns/{run_id}"
             f"?factory=/subscriptions/{subscription_id}/"
@@ -75,7 +77,7 @@ class AzureDataFactoryPipelineRunLink(BaseOperatorLink):
 
 class AzureDataFactoryRunPipelineOperator(BaseOperator):
     """
-    Executes a data factory pipeline.
+    Execute a data factory pipeline.
 
     .. seealso::
         For more information on how to use this operator, take a look at the guide:
@@ -90,7 +92,7 @@ class AzureDataFactoryRunPipelineOperator(BaseOperator):
         ``AzureDataFactoryHook`` will attempt to use the resource group name provided in the corresponding
         connection.
     :param factory_name: The data factory name. If a value is not passed in to the operator, the
-        ``AzureDataFactoryHook`` will attempt to use the factory name name provided in the corresponding
+        ``AzureDataFactoryHook`` will attempt to use the factory name provided in the corresponding
         connection.
     :param reference_pipeline_run_id: The pipeline run identifier. If this run ID is specified the parameters
         of the specified run will be used to create a new run.
@@ -107,6 +109,7 @@ class AzureDataFactoryRunPipelineOperator(BaseOperator):
         waits. Used only if ``wait_for_termination`` is True.
     :param check_interval: Time in seconds to check on a pipeline run's status for non-asynchronous waits.
         Used only if ``wait_for_termination`` is True.
+    :param deferrable: Run operator in deferrable mode.
     """
 
     template_fields: Sequence[str] = (
@@ -128,16 +131,17 @@ class AzureDataFactoryRunPipelineOperator(BaseOperator):
         *,
         pipeline_name: str,
         azure_data_factory_conn_id: str = AzureDataFactoryHook.default_conn_name,
+        resource_group_name: str,
+        factory_name: str,
         wait_for_termination: bool = True,
-        resource_group_name: Optional[str] = None,
-        factory_name: Optional[str] = None,
-        reference_pipeline_run_id: Optional[str] = None,
-        is_recovery: Optional[bool] = None,
-        start_activity_name: Optional[str] = None,
-        start_from_failure: Optional[bool] = None,
-        parameters: Optional[Dict[str, Any]] = None,
+        reference_pipeline_run_id: str | None = None,
+        is_recovery: bool | None = None,
+        start_activity_name: str | None = None,
+        start_from_failure: bool | None = None,
+        parameters: dict[str, Any] | None = None,
         timeout: int = 60 * 60 * 24 * 7,
         check_interval: int = 60,
+        deferrable: bool = conf.getboolean("operators", "default_deferrable", fallback=False),
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -153,14 +157,19 @@ class AzureDataFactoryRunPipelineOperator(BaseOperator):
         self.parameters = parameters
         self.timeout = timeout
         self.check_interval = check_interval
+        self.deferrable = deferrable
 
-    def execute(self, context: "Context") -> None:
-        self.hook = AzureDataFactoryHook(azure_data_factory_conn_id=self.azure_data_factory_conn_id)
+    @cached_property
+    def hook(self) -> AzureDataFactoryHook:
+        """Create and return an AzureDataFactoryHook (cached)."""
+        return AzureDataFactoryHook(azure_data_factory_conn_id=self.azure_data_factory_conn_id)
+
+    def execute(self, context: Context) -> None:
         self.log.info("Executing the %s pipeline.", self.pipeline_name)
         response = self.hook.run_pipeline(
-            pipeline_name=self.pipeline_name,
-            resource_group_name=self.resource_group_name,
-            factory_name=self.factory_name,
+            self.pipeline_name,
+            self.resource_group_name,
+            self.factory_name,
             reference_pipeline_run_id=self.reference_pipeline_run_id,
             is_recovery=self.is_recovery,
             start_activity_name=self.start_activity_name,
@@ -174,21 +183,66 @@ class AzureDataFactoryRunPipelineOperator(BaseOperator):
         context["ti"].xcom_push(key="run_id", value=self.run_id)
 
         if self.wait_for_termination:
-            self.log.info("Waiting for pipeline run %s to terminate.", self.run_id)
+            if self.deferrable is False:
+                self.log.info("Waiting for pipeline run %s to terminate.", self.run_id)
 
-            if self.hook.wait_for_pipeline_run_status(
-                run_id=self.run_id,
-                expected_statuses=AzureDataFactoryPipelineRunStatus.SUCCEEDED,
-                check_interval=self.check_interval,
-                timeout=self.timeout,
-                resource_group_name=self.resource_group_name,
-                factory_name=self.factory_name,
-            ):
-                self.log.info("Pipeline run %s has completed successfully.", self.run_id)
+                if self.hook.wait_for_pipeline_run_status(
+                    self.run_id,
+                    AzureDataFactoryPipelineRunStatus.SUCCEEDED,
+                    self.resource_group_name,
+                    self.factory_name,
+                    check_interval=self.check_interval,
+                    timeout=self.timeout,
+                ):
+                    self.log.info("Pipeline run %s has completed successfully.", self.run_id)
+                else:
+                    raise AzureDataFactoryPipelineRunException(
+                        f"Pipeline run {self.run_id} has failed or has been cancelled."
+                    )
             else:
-                raise AzureDataFactoryPipelineRunException(
-                    f"Pipeline run {self.run_id} has failed or has been cancelled."
+                end_time = time.time() + self.timeout
+                pipeline_run_status = self.hook.get_pipeline_run_status(
+                    self.run_id, self.resource_group_name, self.factory_name
                 )
+                if pipeline_run_status not in AzureDataFactoryPipelineRunStatus.TERMINAL_STATUSES:
+                    self.defer(
+                        timeout=self.execution_timeout,
+                        trigger=AzureDataFactoryTrigger(
+                            azure_data_factory_conn_id=self.azure_data_factory_conn_id,
+                            run_id=self.run_id,
+                            wait_for_termination=self.wait_for_termination,
+                            resource_group_name=self.resource_group_name,
+                            factory_name=self.factory_name,
+                            check_interval=self.check_interval,
+                            end_time=end_time,
+                        ),
+                        method_name="execute_complete",
+                    )
+                elif pipeline_run_status == AzureDataFactoryPipelineRunStatus.SUCCEEDED:
+                    self.log.info("Pipeline run %s has completed successfully.", self.run_id)
+                elif pipeline_run_status in AzureDataFactoryPipelineRunStatus.FAILURE_STATES:
+                    raise AzureDataFactoryPipelineRunException(
+                        f"Pipeline run {self.run_id} has failed or has been cancelled."
+                    )
+        else:
+            if self.deferrable is True:
+                warnings.warn(
+                    "Argument `wait_for_termination` is False and `deferrable` is True , hence "
+                    "`deferrable` parameter doesn't have any effect",
+                    UserWarning,
+                    stacklevel=2,
+                )
+
+    def execute_complete(self, context: Context, event: dict[str, str]) -> None:
+        """
+        Return immediately - callback for when the trigger fires.
+
+        Relies on trigger to throw an exception, otherwise it assumes execution was successful.
+        """
+        if event:
+            if event["status"] == "error":
+                raise AirflowException(event["message"])
+            self.log.info(event["message"])
 
     def on_kill(self) -> None:
         if self.run_id:

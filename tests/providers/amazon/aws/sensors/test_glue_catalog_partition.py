@@ -15,57 +15,54 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
 
-import unittest
 from unittest import mock
 
+import pytest
+from moto import mock_aws
+
+from airflow.exceptions import AirflowException, AirflowSkipException, TaskDeferred
 from airflow.providers.amazon.aws.hooks.glue_catalog import GlueCatalogHook
 from airflow.providers.amazon.aws.sensors.glue_catalog_partition import GlueCatalogPartitionSensor
 
-try:
-    from moto import mock_glue
-except ImportError:
-    mock_glue = None
 
+class TestGlueCatalogPartitionSensor:
+    task_id = "test_glue_catalog_partition_sensor"
 
-@unittest.skipIf(mock_glue is None, "Skipping test because moto.mock_glue is not available")
-class TestGlueCatalogPartitionSensor(unittest.TestCase):
-
-    task_id = 'test_glue_catalog_partition_sensor'
-
-    @mock_glue
-    @mock.patch.object(GlueCatalogHook, 'check_for_partition')
+    @mock_aws
+    @mock.patch.object(GlueCatalogHook, "check_for_partition")
     def test_poke(self, mock_check_for_partition):
         mock_check_for_partition.return_value = True
-        op = GlueCatalogPartitionSensor(task_id=self.task_id, table_name='tbl')
+        op = GlueCatalogPartitionSensor(task_id=self.task_id, table_name="tbl")
         assert op.poke({})
 
-    @mock_glue
-    @mock.patch.object(GlueCatalogHook, 'check_for_partition')
+    @mock_aws
+    @mock.patch.object(GlueCatalogHook, "check_for_partition")
     def test_poke_false(self, mock_check_for_partition):
         mock_check_for_partition.return_value = False
-        op = GlueCatalogPartitionSensor(task_id=self.task_id, table_name='tbl')
+        op = GlueCatalogPartitionSensor(task_id=self.task_id, table_name="tbl")
         assert not op.poke({})
 
-    @mock_glue
-    @mock.patch.object(GlueCatalogHook, 'check_for_partition')
+    @mock_aws
+    @mock.patch.object(GlueCatalogHook, "check_for_partition")
     def test_poke_default_args(self, mock_check_for_partition):
-        table_name = 'test_glue_catalog_partition_sensor_tbl'
+        table_name = "test_glue_catalog_partition_sensor_tbl"
         op = GlueCatalogPartitionSensor(task_id=self.task_id, table_name=table_name)
         op.poke({})
 
         assert op.hook.region_name is None
-        assert op.hook.aws_conn_id == 'aws_default'
-        mock_check_for_partition.assert_called_once_with('default', table_name, "ds='{{ ds }}'")
+        assert op.hook.aws_conn_id == "aws_default"
+        mock_check_for_partition.assert_called_once_with("default", table_name, "ds='{{ ds }}'")
 
-    @mock_glue
-    @mock.patch.object(GlueCatalogHook, 'check_for_partition')
+    @mock_aws
+    @mock.patch.object(GlueCatalogHook, "check_for_partition")
     def test_poke_nondefault_args(self, mock_check_for_partition):
-        table_name = 'my_table'
-        expression = 'col=val'
-        aws_conn_id = 'my_aws_conn_id'
-        region_name = 'us-west-2'
-        database_name = 'my_db'
+        table_name = "my_table"
+        expression = "col=val"
+        aws_conn_id = "my_aws_conn_id"
+        region_name = "us-west-2"
+        database_name = "my_db"
         poke_interval = 2
         timeout = 3
         op = GlueCatalogPartitionSensor(
@@ -78,6 +75,9 @@ class TestGlueCatalogPartitionSensor(unittest.TestCase):
             poke_interval=poke_interval,
             timeout=timeout,
         )
+        # We're mocking all actual AWS calls and don't need a connection. This
+        # avoids an Airflow warning about connection cannot be found.
+        op.hook.get_connection = lambda _: None
         op.poke({})
 
         assert op.hook.region_name == region_name
@@ -86,11 +86,39 @@ class TestGlueCatalogPartitionSensor(unittest.TestCase):
         assert op.timeout == timeout
         mock_check_for_partition.assert_called_once_with(database_name, table_name, expression)
 
-    @mock_glue
-    @mock.patch.object(GlueCatalogHook, 'check_for_partition')
+    @mock_aws
+    @mock.patch.object(GlueCatalogHook, "check_for_partition")
     def test_dot_notation(self, mock_check_for_partition):
-        db_table = 'my_db.my_tbl'
+        db_table = "my_db.my_tbl"
         op = GlueCatalogPartitionSensor(task_id=self.task_id, table_name=db_table)
         op.poke({})
 
-        mock_check_for_partition.assert_called_once_with('my_db', 'my_tbl', "ds='{{ ds }}'")
+        mock_check_for_partition.assert_called_once_with("my_db", "my_tbl", "ds='{{ ds }}'")
+
+    def test_deferrable_mode_raises_task_deferred(self):
+        op = GlueCatalogPartitionSensor(task_id=self.task_id, table_name="tbl", deferrable=True)
+        with pytest.raises(TaskDeferred):
+            op.execute({})
+
+    def test_execute_complete_fails_if_status_is_not_success(self):
+        op = GlueCatalogPartitionSensor(task_id=self.task_id, table_name="tbl", deferrable=True)
+        event = {"status": "FAILED"}
+        with pytest.raises(AirflowException):
+            op.execute_complete(context={}, event=event)
+
+    def test_execute_complete_succeeds_if_status_is_success(self, caplog):
+        op = GlueCatalogPartitionSensor(task_id=self.task_id, table_name="tbl", deferrable=True)
+        event = {"status": "success"}
+        op.execute_complete(context={}, event=event)
+        assert "Partition exists in the Glue Catalog" in caplog.messages
+
+    @pytest.mark.parametrize(
+        "soft_fail, expected_exception", ((False, AirflowException), (True, AirflowSkipException))
+    )
+    def test_fail_execute_complete(self, soft_fail, expected_exception):
+        op = GlueCatalogPartitionSensor(task_id=self.task_id, table_name="tbl", deferrable=True)
+        op.soft_fail = soft_fail
+        event = {"status": "Failed"}
+        message = f"Trigger error: event is {event}"
+        with pytest.raises(expected_exception, match=message):
+            op.execute_complete(context={}, event=event)

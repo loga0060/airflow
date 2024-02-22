@@ -16,20 +16,37 @@
 # specific language governing permissions and limitations
 # under the License.
 """Operators that interact with Google Cloud Life Sciences service."""
+from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional, Sequence, Union
+from typing import TYPE_CHECKING, Sequence
 
-from airflow.exceptions import AirflowException
-from airflow.models import BaseOperator
+from deprecated import deprecated
+
+from airflow.exceptions import AirflowException, AirflowProviderDeprecationWarning
 from airflow.providers.google.cloud.hooks.life_sciences import LifeSciencesHook
+from airflow.providers.google.cloud.links.life_sciences import LifeSciencesLink
+from airflow.providers.google.cloud.operators.cloud_base import GoogleCloudBaseOperator
 
 if TYPE_CHECKING:
     from airflow.utils.context import Context
 
 
-class LifeSciencesRunPipelineOperator(BaseOperator):
+@deprecated(
+    reason=(
+        "Consider using Google Cloud Batch Operators instead."
+        "The Life Sciences API (beta) will be discontinued "
+        "on July 8, 2025 in favor of Google Cloud Batch."
+    ),
+    category=AirflowProviderDeprecationWarning,
+)
+class LifeSciencesRunPipelineOperator(GoogleCloudBaseOperator):
     """
-    Runs a Life Sciences Pipeline
+    Runs a Life Sciences Pipeline.
+
+    .. warning::
+        This operator is deprecated. Consider using Google Cloud Batch Operators instead.
+        The Life Sciences API (beta) will be discontinued on July 8, 2025 in favor
+        of Google Cloud Batch.
 
     .. seealso::
         For more information on how to use this operator, take a look at the guide:
@@ -57,16 +74,17 @@ class LifeSciencesRunPipelineOperator(BaseOperator):
         "api_version",
         "impersonation_chain",
     )
+    operator_extra_links = (LifeSciencesLink(),)
 
     def __init__(
         self,
         *,
         body: dict,
         location: str,
-        project_id: Optional[str] = None,
+        project_id: str | None = None,
         gcp_conn_id: str = "google_cloud_default",
         api_version: str = "v2beta",
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
+        impersonation_chain: str | Sequence[str] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -84,11 +102,17 @@ class LifeSciencesRunPipelineOperator(BaseOperator):
         if not self.location:
             raise AirflowException("The required parameter 'location' is missing")
 
-    def execute(self, context: 'Context') -> dict:
+    def execute(self, context: Context) -> dict:
         hook = LifeSciencesHook(
             gcp_conn_id=self.gcp_conn_id,
             api_version=self.api_version,
             impersonation_chain=self.impersonation_chain,
         )
-
+        project_id = self.project_id or hook.project_id
+        if project_id:
+            LifeSciencesLink.persist(
+                context=context,
+                task_instance=self,
+                project_id=project_id,
+            )
         return hook.run_pipeline(body=self.body, location=self.location, project_id=self.project_id)

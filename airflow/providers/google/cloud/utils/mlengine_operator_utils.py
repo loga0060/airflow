@@ -14,25 +14,27 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-
-#
 """This module contains helper functions for MLEngine operators."""
+from __future__ import annotations
 
 import base64
 import json
 import os
 import re
-from typing import Callable, Dict, Iterable, List, Optional, Tuple, TypeVar
+from typing import TYPE_CHECKING, Callable, Iterable, TypeVar
 from urllib.parse import urlsplit
 
 import dill
 
-from airflow import DAG
 from airflow.exceptions import AirflowException
 from airflow.operators.python import PythonOperator
+from airflow.providers.apache.beam.hooks.beam import BeamRunnerType
 from airflow.providers.apache.beam.operators.beam import BeamRunPythonPipelineOperator
 from airflow.providers.google.cloud.hooks.gcs import GCSHook
 from airflow.providers.google.cloud.operators.mlengine import MLEngineStartBatchPredictionJobOperator
+
+if TYPE_CHECKING:
+    from airflow import DAG
 
 T = TypeVar("T", bound=Callable)
 
@@ -40,22 +42,28 @@ T = TypeVar("T", bound=Callable)
 def create_evaluate_ops(
     task_prefix: str,
     data_format: str,
-    input_paths: List[str],
+    input_paths: list[str],
     prediction_path: str,
-    metric_fn_and_keys: Tuple[T, Iterable[str]],
+    metric_fn_and_keys: tuple[T, Iterable[str]],
     validate_fn: T,
-    batch_prediction_job_id: Optional[str] = None,
-    region: Optional[str] = None,
-    project_id: Optional[str] = None,
-    dataflow_options: Optional[Dict] = None,
-    model_uri: Optional[str] = None,
-    model_name: Optional[str] = None,
-    version_name: Optional[str] = None,
-    dag: Optional[DAG] = None,
+    batch_prediction_job_id: str | None = None,
+    region: str | None = None,
+    project_id: str | None = None,
+    dataflow_options: dict | None = None,
+    model_uri: str | None = None,
+    model_name: str | None = None,
+    version_name: str | None = None,
+    dag: DAG | None = None,
     py_interpreter="python3",
-):
-    """
-    Creates Operators needed for model evaluation and returns.
+) -> tuple[MLEngineStartBatchPredictionJobOperator, BeamRunPythonPipelineOperator, PythonOperator]:
+    r"""
+    Create Operators needed for model evaluation and returns.
+
+    This function is deprecated. All the functionality of legacy MLEngine and new features are available
+    on the Vertex AI platform.
+
+    To create and view Model Evaluation, please check the documentation:
+    https://cloud.google.com/vertex-ai/docs/evaluation/using-model-evaluation#create_an_evaluation.
 
     It gets prediction over inputs via Cloud ML Engine BatchPrediction API by
     calling MLEngineBatchPredictionOperator, then summarize and validate
@@ -183,7 +191,6 @@ def create_evaluate_ops(
         issues check: https://issues.apache.org/jira/browse/BEAM-1251
 
     :returns: a tuple of three operators, (prediction, summary, validation)
-    :rtype: tuple(DataFlowPythonOperator, DataFlowPythonOperator,
                   PythonOperator)
     """
     batch_prediction_job_id = batch_prediction_job_id or ""
@@ -192,7 +199,7 @@ def create_evaluate_ops(
 
     # Verify that task_prefix doesn't have any special characters except hyphen
     # '-', which is the only allowed non-alphanumeric character by Dataflow.
-    if not re.match(r"^[a-zA-Z][-A-Za-z0-9]*$", task_prefix):
+    if not re.fullmatch(r"[a-zA-Z][-A-Za-z0-9]*", task_prefix):
         raise AirflowException(
             "Malformed task_id for DataFlowPythonOperator (only alphanumeric "
             "and hyphens are allowed but got: " + task_prefix
@@ -206,11 +213,11 @@ def create_evaluate_ops(
 
     if dag is not None and dag.default_args is not None:
         default_args = dag.default_args
-        project_id = project_id or default_args.get('project_id')
-        region = region or default_args['region']
-        model_name = model_name or default_args.get('model_name')
-        version_name = version_name or default_args.get('version_name')
-        dataflow_options = dataflow_options or default_args.get('dataflow_default_options')
+        project_id = project_id or default_args.get("project_id")
+        region = region or default_args["region"]
+        model_name = model_name or default_args.get("model_name")
+        version_name = version_name or default_args.get("version_name")
+        dataflow_options = dataflow_options or default_args.get("dataflow_default_options")
 
     evaluate_prediction = MLEngineStartBatchPredictionJobOperator(
         task_id=(task_prefix + "-prediction"),
@@ -229,15 +236,16 @@ def create_evaluate_ops(
     metric_fn_encoded = base64.b64encode(dill.dumps(metric_fn, recurse=True)).decode()
     evaluate_summary = BeamRunPythonPipelineOperator(
         task_id=(task_prefix + "-summary"),
-        py_file=os.path.join(os.path.dirname(__file__), 'mlengine_prediction_summary.py'),
+        runner=BeamRunnerType.DataflowRunner,
+        py_file=os.path.join(os.path.dirname(__file__), "mlengine_prediction_summary.py"),
         default_pipeline_options=dataflow_options,
         pipeline_options={
             "prediction_path": prediction_path,
             "metric_fn_encoded": metric_fn_encoded,
-            "metric_keys": ','.join(metric_keys),
+            "metric_keys": ",".join(metric_keys),
         },
         py_interpreter=py_interpreter,
-        py_requirements=['apache-beam[gcp]>=2.14.0'],
+        py_requirements=["apache-beam[gcp]>=2.46.0"],
         dag=dag,
     )
     evaluate_summary.set_upstream(evaluate_prediction)

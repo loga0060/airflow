@@ -22,10 +22,15 @@ Google Analytics 360 operators allow you to lists all accounts to which the user
 For more information about the Google Analytics 360 API check
 `official documentation <https://developers.google.com/analytics/devguides/config/mgmt/v3>`__.
 
+Please note that the Google Analytics 360 API is replaced by
+`Google Analytics 4 <https://developers.google.com/analytics/devguides/config/admin/v1>`__ and
+`will be turned down on July 1, 2024 <https://support.google.com/analytics/answer/11583528>`__.
+Thus consider using new :doc:`Google Analytics (GA4) Admin Operators </operators/marketing_platform/analytics_admin>`.
+
 Prerequisite Tasks
 ^^^^^^^^^^^^^^^^^^
 
-.. include::/operators/_partials/prerequisite_tasks.rst
+.. include:: /operators/_partials/prerequisite_tasks.rst
 
 .. _howto/operator:GoogleAnalyticsListAccountsOperator:
 
@@ -35,7 +40,7 @@ List the Accounts
 To list accounts from Analytics you can use the
 :class:`~airflow.providers.google.marketing_platform.operators.analytics.GoogleAnalyticsListAccountsOperator`.
 
-.. exampleinclude:: /../../airflow/providers/google/marketing_platform/example_dags/example_analytics.py
+.. exampleinclude:: /../../tests/system/providers/google/marketing_platform/example_analytics.py
     :language: python
     :dedent: 4
     :start-after: [START howto_marketing_platform_list_accounts_operator]
@@ -53,7 +58,7 @@ Returns a web property-Google Ads link to which the user has access.
 To list web property-Google Ads link you can use the
 :class:`~airflow.providers.google.marketing_platform.operators.analytics.GoogleAnalyticsGetAdsLinkOperator`.
 
-.. exampleinclude:: /../../airflow/providers/google/marketing_platform/example_dags/example_analytics.py
+.. exampleinclude:: /../../tests/system/providers/google/marketing_platform/example_analytics.py
     :language: python
     :dedent: 4
     :start-after: [START howto_marketing_platform_get_ads_link_operator]
@@ -71,7 +76,7 @@ Operator returns a list of entity Google Ads links.
 To list Google Ads links you can use the
 :class:`~airflow.providers.google.marketing_platform.operators.analytics.GoogleAnalyticsRetrieveAdsLinksListOperator`.
 
-.. exampleinclude:: /../../airflow/providers/google/marketing_platform/example_dags/example_analytics.py
+.. exampleinclude:: /../../tests/system/providers/google/marketing_platform/example_analytics.py
     :language: python
     :dedent: 4
     :start-after: [START howto_marketing_platform_retrieve_ads_links_list_operator]

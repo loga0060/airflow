@@ -14,6 +14,12 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
+
+import warnings
+
+from airflow.exceptions import RemovedInAirflow3Warning
+from airflow.utils.airflow_flask_app import get_airflow_app
 
 #
 # Copyright (c) 2013, Michael Komitee
@@ -43,26 +49,31 @@
 import logging
 import os
 from functools import wraps
-from socket import getfqdn
-from typing import Any, Callable, Optional, Tuple, TypeVar, Union, cast
+from typing import TYPE_CHECKING, Callable, NamedTuple, TypeVar, cast
 
 import kerberos
-from flask import Response, _request_ctx_stack as stack, g, make_response, request  # type: ignore
-from requests_kerberos import HTTPKerberosAuth
+from flask import Response, g, make_response, request
 
 from airflow.configuration import conf
+from airflow.utils.net import getfqdn
+
+if TYPE_CHECKING:
+    from airflow.auth.managers.models.base_user import BaseUser
 
 log = logging.getLogger(__name__)
 
 
-CLIENT_AUTH: Optional[Union[Tuple[str, str], Any]] = HTTPKerberosAuth(service='airflow')
-
-
 class KerberosService:
-    """Class to keep information about the Kerberos Service initialized"""
+    """Class to keep information about the Kerberos Service initialized."""
 
     def __init__(self):
         self.service_name = None
+
+
+class _KerberosAuth(NamedTuple):
+    return_code: int | None
+    user: str = ""
+    token: str | None = None
 
 
 # Stores currently initialized Kerberos Service
@@ -70,18 +81,18 @@ _KERBEROS_SERVICE = KerberosService()
 
 
 def init_app(app):
-    """Initializes application with kerberos"""
-    hostname = app.config.get('SERVER_NAME')
+    """Initialize application with kerberos."""
+    hostname = app.config.get("SERVER_NAME")
     if not hostname:
         hostname = getfqdn()
     log.info("Kerberos: hostname %s", hostname)
 
-    service = 'airflow'
+    service = "airflow"
 
     _KERBEROS_SERVICE.service_name = f"{service}@{hostname}"
 
-    if 'KRB5_KTNAME' not in os.environ:
-        os.environ['KRB5_KTNAME'] = conf.get('kerberos', 'keytab')
+    if "KRB5_KTNAME" not in os.environ:
+        os.environ["KRB5_KTNAME"] = conf.get("kerberos", "keytab")
 
     try:
         log.info("Kerberos init: %s %s", service, hostname)
@@ -93,10 +104,7 @@ def init_app(app):
 
 
 def _unauthorized():
-    """
-    Indicate that authorization is required
-    :return:
-    """
+    """Indicate that authorization is required."""
     return Response("Unauthorized", 401, {"WWW-Authenticate": "Negotiate"})
 
 
@@ -104,23 +112,24 @@ def _forbidden():
     return Response("Forbidden", 403)
 
 
-def _gssapi_authenticate(token):
+def _gssapi_authenticate(token) -> _KerberosAuth | None:
     state = None
-    ctx = stack.top
     try:
         return_code, state = kerberos.authGSSServerInit(_KERBEROS_SERVICE.service_name)
         if return_code != kerberos.AUTH_GSS_COMPLETE:
-            return None
-        return_code = kerberos.authGSSServerStep(state, token)
-        if return_code == kerberos.AUTH_GSS_COMPLETE:
-            ctx.kerberos_token = kerberos.authGSSServerResponse(state)
-            ctx.kerberos_user = kerberos.authGSSServerUserName(state)
-            return return_code
-        if return_code == kerberos.AUTH_GSS_CONTINUE:
-            return kerberos.AUTH_GSS_CONTINUE
-        return None
+            return _KerberosAuth(return_code=None)
+
+        if (return_code := kerberos.authGSSServerStep(state, token)) == kerberos.AUTH_GSS_COMPLETE:
+            return _KerberosAuth(
+                return_code=return_code,
+                user=kerberos.authGSSServerUserName(state),
+                token=kerberos.authGSSServerResponse(state),
+            )
+        elif return_code == kerberos.AUTH_GSS_CONTINUE:
+            return _KerberosAuth(return_code=return_code)
+        return _KerberosAuth(return_code=return_code)
     except kerberos.GSSError:
-        return None
+        return _KerberosAuth(return_code=None)
     finally:
         if state:
             kerberos.authGSSServerClean(state)
@@ -129,26 +138,45 @@ def _gssapi_authenticate(token):
 T = TypeVar("T", bound=Callable)
 
 
-def requires_authentication(function: T):
-    """Decorator for functions that require authentication with Kerberos"""
+def requires_authentication(function: T, find_user: Callable[[str], BaseUser] | None = None):
+    """Decorate functions that require authentication with Kerberos."""
+    if not find_user:
+        warnings.warn(
+            "This module is deprecated. Please use "
+            "`airflow.providers.fab.auth_manager.api.auth.backend.kerberos_auth` instead.",
+            RemovedInAirflow3Warning,
+            stacklevel=2,
+        )
+        find_user = get_airflow_app().appbuilder.sm.find_user
 
     @wraps(function)
     def decorated(*args, **kwargs):
         header = request.headers.get("Authorization")
         if header:
-            ctx = stack.top
-            token = ''.join(header.split()[1:])
-            return_code = _gssapi_authenticate(token)
-            if return_code == kerberos.AUTH_GSS_COMPLETE:
-                g.user = ctx.kerberos_user
+            token = "".join(header.split()[1:])
+            auth = _gssapi_authenticate(token)
+            if auth.return_code == kerberos.AUTH_GSS_COMPLETE:
+                g.user = find_user(auth.user)
                 response = function(*args, **kwargs)
                 response = make_response(response)
-                if ctx.kerberos_token is not None:
-                    response.headers['WWW-Authenticate'] = ' '.join(['negotiate', ctx.kerberos_token])
-
+                if auth.token is not None:
+                    response.headers["WWW-Authenticate"] = f"negotiate {auth.token}"
                 return response
-            if return_code != kerberos.AUTH_GSS_CONTINUE:
+            elif auth.return_code != kerberos.AUTH_GSS_CONTINUE:
                 return _forbidden()
         return _unauthorized()
 
     return cast(T, decorated)
+
+
+def __getattr__(name):
+    # PEP-562: Lazy loaded attributes on python modules
+    if name != "CLIENT_AUTH":
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+    from requests_kerberos import HTTPKerberosAuth
+
+    val = HTTPKerberosAuth(service="airflow")
+    # Store for next time
+    globals()[name] = val
+    return val

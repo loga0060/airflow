@@ -14,18 +14,20 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional, Sequence, Set, Tuple, Union
+from typing import TYPE_CHECKING, Sequence
 
 from google.api_core.gapic_v1.method import DEFAULT, _MethodDefault
-from google.api_core.retry import Retry
 from google.cloud.workflows.executions_v1beta import Execution
 
-from airflow.exceptions import AirflowException
+from airflow.exceptions import AirflowException, AirflowSkipException
 from airflow.providers.google.cloud.hooks.workflows import WorkflowsHook
 from airflow.sensors.base import BaseSensorOperator
 
 if TYPE_CHECKING:
+    from google.api_core.retry import Retry
+
     from airflow.utils.context import Context
 
 
@@ -56,14 +58,14 @@ class WorkflowExecutionSensor(BaseSensorOperator):
         workflow_id: str,
         execution_id: str,
         location: str,
-        project_id: Optional[str] = None,
-        success_states: Optional[Set[Execution.State]] = None,
-        failure_states: Optional[Set[Execution.State]] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        request_timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        project_id: str | None = None,
+        success_states: set[Execution.State] | None = None,
+        failure_states: set[Execution.State] | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        request_timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
         gcp_conn_id: str = "google_cloud_default",
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
+        impersonation_chain: str | Sequence[str] | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -83,7 +85,7 @@ class WorkflowExecutionSensor(BaseSensorOperator):
         self.gcp_conn_id = gcp_conn_id
         self.impersonation_chain = impersonation_chain
 
-    def poke(self, context: 'Context'):
+    def poke(self, context: Context):
         hook = WorkflowsHook(gcp_conn_id=self.gcp_conn_id, impersonation_chain=self.impersonation_chain)
         self.log.info("Checking state of execution %s for workflow %s", self.execution_id, self.workflow_id)
         execution: Execution = hook.get_execution(
@@ -98,10 +100,14 @@ class WorkflowExecutionSensor(BaseSensorOperator):
 
         state = execution.state
         if state in self.failure_states:
-            raise AirflowException(
+            # TODO: remove this if check when min_airflow_version is set to higher than 2.7.1
+            message = (
                 f"Execution {self.execution_id} for workflow {self.execution_id} "
-                f"failed and is in `{state}` state",
+                f"failed and is in `{state}` state"
             )
+            if self.soft_fail:
+                raise AirflowSkipException(message)
+            raise AirflowException(message)
 
         if state in self.success_states:
             self.log.info(

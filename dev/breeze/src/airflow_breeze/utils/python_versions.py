@@ -14,15 +14,15 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
 
 import sys
-from typing import List
 
 from airflow_breeze.global_constants import ALLOWED_PYTHON_MAJOR_MINOR_VERSIONS
 from airflow_breeze.utils.console import get_console
 
 
-def get_python_version_list(python_versions: str) -> List[str]:
+def get_python_version_list(python_versions: str) -> list[str]:
     """
     Retrieve and validate space-separated list of Python versions and return them in the form of list.
     :param python_versions: space separated list of Python versions
@@ -43,3 +43,21 @@ def get_python_version_list(python_versions: str) -> List[str]:
         )
         sys.exit(1)
     return python_version_list
+
+
+def check_python_version():
+    error = False
+    if not sys.version_info >= (3, 9):
+        get_console().print("[error]At least Python 3.9 is required to prepare reproducible archives.\n")
+        error = True
+    elif not sys.version_info < (3, 12):
+        get_console().print("[error]Python 3.12 is not supported.\n")
+        error = True
+    if error:
+        get_console().print(
+            "[warning]Please reinstall Breeze using Python 3.9 - 3.11 environment.[/]\n\n"
+            "For example:\n\n"
+            "pipx uninstall apache-airflow-breeze\n"
+            "pipx install --python $(which python3.9) -e ./dev/breeze --force\n"
+        )
+        sys.exit(1)

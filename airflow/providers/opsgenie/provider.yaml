@@ -19,9 +19,19 @@
 package-name: apache-airflow-providers-opsgenie
 name: Opsgenie
 description: |
-    `Opsgenie <https://www.opsgenie.com/>`__
+    `Opsgenie <https://www.atlassian.com/software/opsgenie>`__
 
+state: ready
+source-date-epoch: 1705912197
+# note that those versions are maintained by release manager - do not update them manually
 versions:
+  - 5.5.0
+  - 5.4.0
+  - 5.3.0
+  - 5.2.0
+  - 5.1.1
+  - 5.1.0
+  - 5.0.0
   - 4.0.0
   - 3.1.0
   - 3.0.3
@@ -35,12 +45,12 @@ versions:
   - 1.0.0
 
 dependencies:
-  - apache-airflow>=2.2.0
+  - apache-airflow>=2.6.0
   - opsgenie-sdk>=2.1.5
 
 integrations:
   - integration-name: Opsgenie
-    external-doc-url: https://www.opsgenie.com/
+    external-doc-url: https://www.atlassian.com/software/opsgenie
     how-to-guide:
       - /docs/apache-airflow-providers-opsgenie/operators/opsgenie_alert.rst
     logo: /integration-logos/opsgenie/Opsgenie.png
@@ -49,15 +59,16 @@ integrations:
 operators:
   - integration-name: Opsgenie
     python-modules:
-      - airflow.providers.opsgenie.operators.opsgenie_alert
       - airflow.providers.opsgenie.operators.opsgenie
 
 hooks:
   - integration-name: Opsgenie
     python-modules:
-      - airflow.providers.opsgenie.hooks.opsgenie_alert
       - airflow.providers.opsgenie.hooks.opsgenie
 
 connection-types:
   - hook-class-name: airflow.providers.opsgenie.hooks.opsgenie.OpsgenieAlertHook
     connection-type: opsgenie
+
+notifications:
+  - airflow.providers.opsgenie.notifications.opsgenie.OpsgenieNotifier

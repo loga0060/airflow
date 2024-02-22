@@ -15,8 +15,9 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-#
-import unittest
+from __future__ import annotations
+
+from contextlib import nullcontext as does_not_raise
 from unittest import mock
 
 import pytest
@@ -31,23 +32,47 @@ JOB_ID = "test-id"
 TASK_ID = "test-task-id"
 MODEL = "test_model"
 VIEW = "test_view"
-SOURCE = f'airflow:{version}'
+SOURCE = f"airflow:{version}"
 
 CONN_EXTRA = {"verify_ssl": "true", "timeout": "120"}
 
 
-class TestLookerHook(unittest.TestCase):
-    def setUp(self):
+class TestLookerHook:
+    def setup_method(self):
         with mock.patch("airflow.hooks.base.BaseHook.get_connection") as conn:
             conn.return_value.extra_dejson = CONN_EXTRA
             self.hook = LookerHook(looker_conn_id="test")
+
+    @mock.patch("airflow.providers.google.cloud.hooks.looker.requests_transport")
+    def test_get_looker_sdk(self, _):
+        """
+        Test that get_looker_sdk is setting up the sdk properly
+
+        Note: `requests_transport` is mocked so we don't have to test
+        looker_sdk's functionality, just LookerHook's usage of it
+        """
+        self.hook.get_connection = mock.MagicMock()
+        sdk = self.hook.get_looker_sdk()
+
+        # Attempting to use the instantiated SDK should not throw an error
+        with does_not_raise():
+            sdk.get(path="/", structure=None)
+            sdk.delete(path="/", structure=None)
+
+            # The post/patch/put methods call a method internally to serialize
+            # the body if LookerHook sets the wrong serialize function on init
+            # there will be TypeErrors thrown
+            # The body we pass here must be a list, dict, or model.Model
+            sdk.post(path="/", structure=None, body=[])
+            sdk.patch(path="/", structure=None, body=[])
+            sdk.put(path="/", structure=None, body=[])
 
     @mock.patch(HOOK_PATH.format("pdt_build_status"))
     def test_wait_for_job(self, mock_pdt_build_status):
         # replace pdt_build_status invocation with mock status
         mock_pdt_build_status.side_effect = [
-            {'status': JobStatus.RUNNING.value},
-            {'status': JobStatus.ERROR.value, 'message': 'test'},
+            {"status": JobStatus.RUNNING.value},
+            {"status": JobStatus.ERROR.value, "message": "test"},
         ]
 
         # call hook in mock context (w/ no wait b/w job checks)

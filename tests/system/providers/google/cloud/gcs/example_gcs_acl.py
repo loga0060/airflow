@@ -18,12 +18,13 @@
 """
 Example Airflow DAG for Google Cloud Storage ACL (Access Control List) operators.
 """
+from __future__ import annotations
 
 import os
 from datetime import datetime
 from pathlib import Path
 
-from airflow import models
+from airflow.models.dag import DAG
 from airflow.providers.google.cloud.operators.gcs import (
     GCSBucketCreateAclEntryOperator,
     GCSCreateBucketOperator,
@@ -47,9 +48,9 @@ GCS_ACL_BUCKET_ROLE = "OWNER"
 GCS_ACL_OBJECT_ROLE = "OWNER"
 
 
-with models.DAG(
+with DAG(
     DAG_ID,
-    schedule_interval='@once',
+    schedule="@once",
     start_date=datetime(2021, 1, 1),
     catchup=False,
     tags=["gcs", "acl", "example"],
@@ -58,13 +59,7 @@ with models.DAG(
         task_id="create_bucket",
         bucket_name=BUCKET_NAME,
         project_id=PROJECT_ID,
-        resource={
-            "iamConfiguration": {
-                "uniformBucketLevelAccess": {
-                    "enabled": False,
-                },
-            },
-        },
+        resource={"predefined_acl": "public_read_write"},
     )
 
     upload_file = LocalFilesystemToGCSOperator(

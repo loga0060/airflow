@@ -15,15 +15,27 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-from typing import Any, Iterable, List, Mapping, Optional, Sequence, Union
+from __future__ import annotations
 
-from airflow.models import BaseOperator
-from airflow.providers.sqlite.hooks.sqlite import SqliteHook
+from typing import Sequence
+
+from deprecated import deprecated
+
+from airflow.exceptions import AirflowProviderDeprecationWarning
+from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 
 
-class SqliteOperator(BaseOperator):
+@deprecated(
+    reason="Please use `airflow.providers.common.sql.operators.sql.SQLExecuteQueryOperator`.",
+    category=AirflowProviderDeprecationWarning,
+)
+class SqliteOperator(SQLExecuteQueryOperator):
     """
-    Executes sql code in a specific Sqlite database
+    Executes sql code in a specific Sqlite database.
+
+    This class is deprecated.
+
+    Please use :class:`airflow.providers.common.sql.operators.sql.SQLExecuteQueryOperator`.
 
     .. seealso::
         For more information on how to use this operator, take a look at the guide:
@@ -37,25 +49,10 @@ class SqliteOperator(BaseOperator):
     :param parameters: (optional) the parameters to render the SQL query with.
     """
 
-    template_fields: Sequence[str] = ('sql',)
-    template_ext: Sequence[str] = ('.sql',)
-    template_fields_renderers = {'sql': 'sql'}
-    ui_color = '#cdaaed'
+    template_fields: Sequence[str] = ("sql",)
+    template_ext: Sequence[str] = (".sql",)
+    template_fields_renderers = {"sql": "sql"}
+    ui_color = "#cdaaed"
 
-    def __init__(
-        self,
-        *,
-        sql: Union[str, List[str]],
-        sqlite_conn_id: str = 'sqlite_default',
-        parameters: Optional[Union[Mapping, Iterable]] = None,
-        **kwargs,
-    ) -> None:
-        super().__init__(**kwargs)
-        self.sqlite_conn_id = sqlite_conn_id
-        self.sql = sql
-        self.parameters = parameters or []
-
-    def execute(self, context: Mapping[Any, Any]) -> None:
-        self.log.info('Executing: %s', self.sql)
-        hook = SqliteHook(sqlite_conn_id=self.sqlite_conn_id)
-        hook.run(self.sql, parameters=self.parameters)
+    def __init__(self, *, sqlite_conn_id: str = "sqlite_default", **kwargs) -> None:
+        super().__init__(conn_id=sqlite_conn_id, **kwargs)

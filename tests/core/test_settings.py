@@ -15,16 +15,18 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-#
+from __future__ import annotations
+
+import contextlib
 import os
 import sys
 import tempfile
-import unittest
-from unittest.mock import MagicMock, call
+from unittest import mock
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-from airflow.exceptions import AirflowClusterPolicyViolation
+from airflow.exceptions import AirflowClusterPolicyViolation, AirflowConfigException
 from tests.test_utils.config import conf_vars
 
 SETTINGS_FILE_POLICY = """
@@ -68,7 +70,7 @@ class SettingsContext:
         self.settings_file = os.path.join(self.settings_root, filename)
 
     def __enter__(self):
-        with open(self.settings_file, 'w') as handle:
+        with open(self.settings_file, "w") as handle:
             handle.writelines(self.content)
         sys.path.append(self.settings_root)
         return self.settings_file
@@ -77,32 +79,32 @@ class SettingsContext:
         sys.path.remove(self.settings_root)
 
 
-class TestLocalSettings(unittest.TestCase):
+class TestLocalSettings:
     # Make sure that the configure_logging is not cached
-    def setUp(self):
+    def setup_method(self):
         self.old_modules = dict(sys.modules)
 
-    def tearDown(self):
+    def teardown_method(self):
         # Remove any new modules imported during the test run. This lets us
         # import the same source files for more than one test.
         for mod in [m for m in sys.modules if m not in self.old_modules]:
             del sys.modules[mod]
 
-    @unittest.mock.patch("airflow.settings.import_local_settings")
-    @unittest.mock.patch("airflow.settings.prepare_syspath")
+    @mock.patch("airflow.settings.import_local_settings")
+    @mock.patch("airflow.settings.prepare_syspath")
     def test_initialize_order(self, prepare_syspath, import_local_settings):
         """
         Tests that import_local_settings is called after prepare_classpath
         """
-        mock = unittest.mock.Mock()
-        mock.attach_mock(prepare_syspath, "prepare_syspath")
-        mock.attach_mock(import_local_settings, "import_local_settings")
+        mock_local_settings = mock.Mock()
+        mock_local_settings.attach_mock(prepare_syspath, "prepare_syspath")
+        mock_local_settings.attach_mock(import_local_settings, "import_local_settings")
 
         import airflow.settings
 
         airflow.settings.initialize()
 
-        mock.assert_has_calls([call.prepare_syspath(), call.import_local_settings()])
+        mock_local_settings.assert_has_calls([call.prepare_syspath(), call.import_local_settings()])
 
     def test_import_with_dunder_all_not_specified(self):
         """
@@ -132,7 +134,7 @@ class TestLocalSettings(unittest.TestCase):
 
             assert task_instance.run_as_user == "myself"
 
-    @unittest.mock.patch("airflow.settings.log.debug")
+    @mock.patch("airflow.settings.log.debug")
     def test_import_local_settings_without_syspath(self, log_mock):
         """
         Tests that an ImportError is raised in import_local_settings
@@ -171,7 +173,7 @@ class TestLocalSettings(unittest.TestCase):
             pod = MagicMock()
             settings.pod_mutation_hook(pod)
 
-            assert pod.namespace == 'airflow-tests'
+            assert pod.namespace == "airflow-tests"
 
     def test_custom_policy(self):
         with SettingsContext(SETTINGS_FILE_CUSTOM_POLICY, "airflow_local_settings"):
@@ -180,14 +182,14 @@ class TestLocalSettings(unittest.TestCase):
             settings.import_local_settings()
 
             task_instance = MagicMock()
-            task_instance.owner = 'airflow'
+            task_instance.owner = "airflow"
             with pytest.raises(AirflowClusterPolicyViolation):
                 settings.task_must_have_owners(task_instance)
 
 
-class TestUpdatedConfigNames(unittest.TestCase):
+class TestUpdatedConfigNames:
     @conf_vars(
-        {("webserver", "session_lifetime_days"): '5', ("webserver", "session_lifetime_minutes"): '43200'}
+        {("webserver", "session_lifetime_days"): "5", ("webserver", "session_lifetime_minutes"): "43200"}
     )
     def test_updates_deprecated_session_timeout_config_val_when_new_config_val_is_default(self):
         from airflow import settings
@@ -198,7 +200,7 @@ class TestUpdatedConfigNames(unittest.TestCase):
             assert session_lifetime_config == minutes_in_five_days
 
     @conf_vars(
-        {("webserver", "session_lifetime_days"): '5', ("webserver", "session_lifetime_minutes"): '43201'}
+        {("webserver", "session_lifetime_days"): "5", ("webserver", "session_lifetime_minutes"): "43201"}
     )
     def test_uses_updated_session_timeout_config_when_val_is_not_default(self):
         from airflow import settings
@@ -206,10 +208,59 @@ class TestUpdatedConfigNames(unittest.TestCase):
         session_lifetime_config = settings.get_session_lifetime_config()
         assert session_lifetime_config == 43201
 
-    @conf_vars({("webserver", "session_lifetime_days"): ''})
+    @conf_vars({("webserver", "session_lifetime_days"): ""})
     def test_uses_updated_session_timeout_config_by_default(self):
         from airflow import settings
 
         session_lifetime_config = settings.get_session_lifetime_config()
         default_timeout_minutes = 30 * 24 * 60
         assert session_lifetime_config == default_timeout_minutes
+
+
+@pytest.mark.parametrize(
+    ["value", "expectation"],
+    [
+        (
+            "sqlite:///./relative_path.db",
+            pytest.raises(AirflowConfigException, match=r"Cannot use relative path:"),
+        ),
+        # Should not raise an exception
+        ("sqlite://", contextlib.nullcontext()),
+    ],
+)
+def test_sqlite_relative_path(value, expectation):
+    from airflow import settings
+
+    with patch("os.environ", {"_AIRFLOW_SKIP_DB_TESTS": "true"}), patch(
+        "airflow.settings.SQL_ALCHEMY_CONN", value
+    ), patch("airflow.settings.Session"), patch("airflow.settings.engine"):
+        with expectation:
+            settings.configure_orm()
+
+
+class TestEngineArgs:
+    @staticmethod
+    @patch("airflow.settings.conf")
+    @patch("airflow.settings.is_sqlalchemy_v1")
+    def test_encoding_present_in_v1(is_v1, mock_conf):
+        from airflow import settings
+
+        is_v1.return_value = True
+        mock_conf.getjson.return_value = {}
+
+        engine_args = settings.prepare_engine_args()
+
+        assert "encoding" in engine_args
+
+    @staticmethod
+    @patch("airflow.settings.conf")
+    @patch("airflow.settings.is_sqlalchemy_v1")
+    def test_encoding_absent_in_v2(is_v1, mock_conf):
+        from airflow import settings
+
+        is_v1.return_value = False
+        mock_conf.getjson.return_value = {}
+
+        engine_args = settings.prepare_engine_args()
+
+        assert "encoding" not in engine_args

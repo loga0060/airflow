@@ -15,14 +15,15 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-
 """
 Airflow System Test DAG that verifies BigQueryToGCSOperator.
 """
+from __future__ import annotations
+
 import os
 from datetime import datetime
 
-from airflow import models
+from airflow.models.dag import DAG
 from airflow.providers.google.cloud.operators.bigquery import (
     BigQueryCreateEmptyDatasetOperator,
     BigQueryCreateEmptyTableOperator,
@@ -42,9 +43,9 @@ BUCKET_FILE = "test.csv"
 TABLE = "test"
 
 
-with models.DAG(
+with DAG(
     DAG_ID,
-    schedule_interval="@once",
+    schedule="@once",
     start_date=datetime(2021, 1, 1),
     catchup=False,
     tags=["example", "bigquery"],
@@ -65,11 +66,13 @@ with models.DAG(
         ],
     )
 
+    # [START howto_operator_bigquery_to_gcs]
     bigquery_to_gcs = BigQueryToGCSOperator(
         task_id="bigquery_to_gcs",
         source_project_dataset_table=f"{DATASET_NAME}.{TABLE}",
         destination_cloud_storage_uris=[f"gs://{BUCKET_NAME}/{BUCKET_FILE}"],
     )
+    # [END howto_operator_bigquery_to_gcs]
 
     delete_bucket = GCSDeleteBucketOperator(
         task_id="delete_bucket", bucket_name=BUCKET_NAME, trigger_rule=TriggerRule.ALL_DONE

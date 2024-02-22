@@ -18,12 +18,13 @@
 """
 Example Airflow DAG for Google Cloud Storage GCSFileTransformOperator operator.
 """
+from __future__ import annotations
 
 import os
 from datetime import datetime
 from pathlib import Path
 
-from airflow import models
+from airflow.models.dag import DAG
 from airflow.providers.google.cloud.operators.gcs import (
     GCSCreateBucketOperator,
     GCSDeleteBucketOperator,
@@ -45,9 +46,9 @@ UPLOAD_FILE_PATH = str(Path(__file__).parent / "resources" / FILE_NAME)
 TRANSFORM_SCRIPT_PATH = str(Path(__file__).parent / "resources" / "transform_script.py")
 
 
-with models.DAG(
+with DAG(
     DAG_ID,
-    schedule_interval='@once',
+    schedule="@once",
     start_date=datetime(2021, 1, 1),
     catchup=False,
     tags=["gcs", "example"],

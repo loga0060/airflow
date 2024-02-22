@@ -15,15 +15,14 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-#
 """This module contains a Google Cloud Vertex AI hook."""
+from __future__ import annotations
 
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, Sequence
 
+from deprecated import deprecated
 from google.api_core.client_options import ClientOptions
 from google.api_core.gapic_v1.method import DEFAULT, _MethodDefault
-from google.api_core.operation import Operation
-from google.api_core.retry import Retry
 from google.cloud.aiplatform import (
     CustomContainerTrainingJob,
     CustomPythonPackageTrainingJob,
@@ -32,16 +31,20 @@ from google.cloud.aiplatform import (
     models,
 )
 from google.cloud.aiplatform_v1 import JobServiceClient, PipelineServiceClient
-from google.cloud.aiplatform_v1.services.job_service.pagers import ListCustomJobsPager
-from google.cloud.aiplatform_v1.services.pipeline_service.pagers import (
-    ListPipelineJobsPager,
-    ListTrainingPipelinesPager,
-)
-from google.cloud.aiplatform_v1.types import CustomJob, PipelineJob, TrainingPipeline
 
-from airflow import AirflowException
+from airflow.exceptions import AirflowException, AirflowProviderDeprecationWarning
 from airflow.providers.google.common.consts import CLIENT_INFO
 from airflow.providers.google.common.hooks.base_google import GoogleBaseHook
+
+if TYPE_CHECKING:
+    from google.api_core.operation import Operation
+    from google.api_core.retry import Retry
+    from google.cloud.aiplatform_v1.services.job_service.pagers import ListCustomJobsPager
+    from google.cloud.aiplatform_v1.services.pipeline_service.pagers import (
+        ListPipelineJobsPager,
+        ListTrainingPipelinesPager,
+    )
+    from google.cloud.aiplatform_v1.types import CustomJob, PipelineJob, TrainingPipeline
 
 
 class CustomJobHook(GoogleBaseHook):
@@ -50,47 +53,47 @@ class CustomJobHook(GoogleBaseHook):
     def __init__(
         self,
         gcp_conn_id: str = "google_cloud_default",
-        delegate_to: Optional[str] = None,
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
+        impersonation_chain: str | Sequence[str] | None = None,
+        **kwargs,
     ) -> None:
+        if kwargs.get("delegate_to") is not None:
+            raise RuntimeError(
+                "The `delegate_to` parameter has been deprecated before and finally removed in this version"
+                " of Google Provider. You MUST convert it to `impersonate_chain`"
+            )
         super().__init__(
             gcp_conn_id=gcp_conn_id,
-            delegate_to=delegate_to,
             impersonation_chain=impersonation_chain,
         )
-        self._job: Optional[
-            Union[
-                CustomContainerTrainingJob,
-                CustomPythonPackageTrainingJob,
-                CustomTrainingJob,
-            ]
-        ] = None
+        self._job: None | (
+            CustomContainerTrainingJob | CustomPythonPackageTrainingJob | CustomTrainingJob
+        ) = None
 
     def get_pipeline_service_client(
         self,
-        region: Optional[str] = None,
+        region: str | None = None,
     ) -> PipelineServiceClient:
-        """Returns PipelineServiceClient."""
-        if region and region != 'global':
-            client_options = ClientOptions(api_endpoint=f'{region}-aiplatform.googleapis.com:443')
+        """Return PipelineServiceClient object."""
+        if region and region != "global":
+            client_options = ClientOptions(api_endpoint=f"{region}-aiplatform.googleapis.com:443")
         else:
             client_options = ClientOptions()
         return PipelineServiceClient(
-            credentials=self._get_credentials(), client_info=CLIENT_INFO, client_options=client_options
+            credentials=self.get_credentials(), client_info=CLIENT_INFO, client_options=client_options
         )
 
     def get_job_service_client(
         self,
-        region: Optional[str] = None,
+        region: str | None = None,
     ) -> JobServiceClient:
-        """Returns JobServiceClient"""
-        if region and region != 'global':
-            client_options = ClientOptions(api_endpoint=f'{region}-aiplatform.googleapis.com:443')
+        """Return JobServiceClient object."""
+        if region and region != "global":
+            client_options = ClientOptions(api_endpoint=f"{region}-aiplatform.googleapis.com:443")
         else:
             client_options = ClientOptions()
 
         return JobServiceClient(
-            credentials=self._get_credentials(), client_info=CLIENT_INFO, client_options=client_options
+            credentials=self.get_credentials(), client_info=CLIENT_INFO, client_options=client_options
         )
 
     def get_custom_container_training_job(
@@ -98,25 +101,25 @@ class CustomJobHook(GoogleBaseHook):
         display_name: str,
         container_uri: str,
         command: Sequence[str] = [],
-        model_serving_container_image_uri: Optional[str] = None,
-        model_serving_container_predict_route: Optional[str] = None,
-        model_serving_container_health_route: Optional[str] = None,
-        model_serving_container_command: Optional[Sequence[str]] = None,
-        model_serving_container_args: Optional[Sequence[str]] = None,
-        model_serving_container_environment_variables: Optional[Dict[str, str]] = None,
-        model_serving_container_ports: Optional[Sequence[int]] = None,
-        model_description: Optional[str] = None,
-        model_instance_schema_uri: Optional[str] = None,
-        model_parameters_schema_uri: Optional[str] = None,
-        model_prediction_schema_uri: Optional[str] = None,
-        project: Optional[str] = None,
-        location: Optional[str] = None,
-        labels: Optional[Dict[str, str]] = None,
-        training_encryption_spec_key_name: Optional[str] = None,
-        model_encryption_spec_key_name: Optional[str] = None,
-        staging_bucket: Optional[str] = None,
+        model_serving_container_image_uri: str | None = None,
+        model_serving_container_predict_route: str | None = None,
+        model_serving_container_health_route: str | None = None,
+        model_serving_container_command: Sequence[str] | None = None,
+        model_serving_container_args: Sequence[str] | None = None,
+        model_serving_container_environment_variables: dict[str, str] | None = None,
+        model_serving_container_ports: Sequence[int] | None = None,
+        model_description: str | None = None,
+        model_instance_schema_uri: str | None = None,
+        model_parameters_schema_uri: str | None = None,
+        model_prediction_schema_uri: str | None = None,
+        project: str | None = None,
+        location: str | None = None,
+        labels: dict[str, str] | None = None,
+        training_encryption_spec_key_name: str | None = None,
+        model_encryption_spec_key_name: str | None = None,
+        staging_bucket: str | None = None,
     ) -> CustomContainerTrainingJob:
-        """Returns CustomContainerTrainingJob object"""
+        """Return CustomContainerTrainingJob object."""
         return CustomContainerTrainingJob(
             display_name=display_name,
             container_uri=container_uri,
@@ -134,7 +137,7 @@ class CustomJobHook(GoogleBaseHook):
             model_prediction_schema_uri=model_prediction_schema_uri,
             project=project,
             location=location,
-            credentials=self._get_credentials(),
+            credentials=self.get_credentials(),
             labels=labels,
             training_encryption_spec_key_name=training_encryption_spec_key_name,
             model_encryption_spec_key_name=model_encryption_spec_key_name,
@@ -147,25 +150,25 @@ class CustomJobHook(GoogleBaseHook):
         python_package_gcs_uri: str,
         python_module_name: str,
         container_uri: str,
-        model_serving_container_image_uri: Optional[str] = None,
-        model_serving_container_predict_route: Optional[str] = None,
-        model_serving_container_health_route: Optional[str] = None,
-        model_serving_container_command: Optional[Sequence[str]] = None,
-        model_serving_container_args: Optional[Sequence[str]] = None,
-        model_serving_container_environment_variables: Optional[Dict[str, str]] = None,
-        model_serving_container_ports: Optional[Sequence[int]] = None,
-        model_description: Optional[str] = None,
-        model_instance_schema_uri: Optional[str] = None,
-        model_parameters_schema_uri: Optional[str] = None,
-        model_prediction_schema_uri: Optional[str] = None,
-        project: Optional[str] = None,
-        location: Optional[str] = None,
-        labels: Optional[Dict[str, str]] = None,
-        training_encryption_spec_key_name: Optional[str] = None,
-        model_encryption_spec_key_name: Optional[str] = None,
-        staging_bucket: Optional[str] = None,
+        model_serving_container_image_uri: str | None = None,
+        model_serving_container_predict_route: str | None = None,
+        model_serving_container_health_route: str | None = None,
+        model_serving_container_command: Sequence[str] | None = None,
+        model_serving_container_args: Sequence[str] | None = None,
+        model_serving_container_environment_variables: dict[str, str] | None = None,
+        model_serving_container_ports: Sequence[int] | None = None,
+        model_description: str | None = None,
+        model_instance_schema_uri: str | None = None,
+        model_parameters_schema_uri: str | None = None,
+        model_prediction_schema_uri: str | None = None,
+        project: str | None = None,
+        location: str | None = None,
+        labels: dict[str, str] | None = None,
+        training_encryption_spec_key_name: str | None = None,
+        model_encryption_spec_key_name: str | None = None,
+        staging_bucket: str | None = None,
     ):
-        """Returns CustomPythonPackageTrainingJob object"""
+        """Return CustomPythonPackageTrainingJob object."""
         return CustomPythonPackageTrainingJob(
             display_name=display_name,
             container_uri=container_uri,
@@ -184,7 +187,7 @@ class CustomJobHook(GoogleBaseHook):
             model_prediction_schema_uri=model_prediction_schema_uri,
             project=project,
             location=location,
-            credentials=self._get_credentials(),
+            credentials=self.get_credentials(),
             labels=labels,
             training_encryption_spec_key_name=training_encryption_spec_key_name,
             model_encryption_spec_key_name=model_encryption_spec_key_name,
@@ -196,26 +199,26 @@ class CustomJobHook(GoogleBaseHook):
         display_name: str,
         script_path: str,
         container_uri: str,
-        requirements: Optional[Sequence[str]] = None,
-        model_serving_container_image_uri: Optional[str] = None,
-        model_serving_container_predict_route: Optional[str] = None,
-        model_serving_container_health_route: Optional[str] = None,
-        model_serving_container_command: Optional[Sequence[str]] = None,
-        model_serving_container_args: Optional[Sequence[str]] = None,
-        model_serving_container_environment_variables: Optional[Dict[str, str]] = None,
-        model_serving_container_ports: Optional[Sequence[int]] = None,
-        model_description: Optional[str] = None,
-        model_instance_schema_uri: Optional[str] = None,
-        model_parameters_schema_uri: Optional[str] = None,
-        model_prediction_schema_uri: Optional[str] = None,
-        project: Optional[str] = None,
-        location: Optional[str] = None,
-        labels: Optional[Dict[str, str]] = None,
-        training_encryption_spec_key_name: Optional[str] = None,
-        model_encryption_spec_key_name: Optional[str] = None,
-        staging_bucket: Optional[str] = None,
+        requirements: Sequence[str] | None = None,
+        model_serving_container_image_uri: str | None = None,
+        model_serving_container_predict_route: str | None = None,
+        model_serving_container_health_route: str | None = None,
+        model_serving_container_command: Sequence[str] | None = None,
+        model_serving_container_args: Sequence[str] | None = None,
+        model_serving_container_environment_variables: dict[str, str] | None = None,
+        model_serving_container_ports: Sequence[int] | None = None,
+        model_description: str | None = None,
+        model_instance_schema_uri: str | None = None,
+        model_parameters_schema_uri: str | None = None,
+        model_prediction_schema_uri: str | None = None,
+        project: str | None = None,
+        location: str | None = None,
+        labels: dict[str, str] | None = None,
+        training_encryption_spec_key_name: str | None = None,
+        model_encryption_spec_key_name: str | None = None,
+        staging_bucket: str | None = None,
     ):
-        """Returns CustomTrainingJob object"""
+        """Return CustomTrainingJob object."""
         return CustomTrainingJob(
             display_name=display_name,
             script_path=script_path,
@@ -234,7 +237,7 @@ class CustomJobHook(GoogleBaseHook):
             model_prediction_schema_uri=model_prediction_schema_uri,
             project=project,
             location=location,
-            credentials=self._get_credentials(),
+            credentials=self.get_credentials(),
             labels=labels,
             training_encryption_spec_key_name=training_encryption_spec_key_name,
             model_encryption_spec_key_name=model_encryption_spec_key_name,
@@ -242,12 +245,22 @@ class CustomJobHook(GoogleBaseHook):
         )
 
     @staticmethod
-    def extract_model_id(obj: Dict) -> str:
-        """Returns unique id of the Model."""
+    def extract_model_id(obj: dict) -> str:
+        """Return unique id of the Model."""
         return obj["name"].rpartition("/")[-1]
 
-    def wait_for_operation(self, operation: Operation, timeout: Optional[float] = None):
-        """Waits for long-lasting operation to complete."""
+    @staticmethod
+    def extract_training_id(resource_name: str) -> str:
+        """Return unique id of the Training pipeline."""
+        return resource_name.rpartition("/")[-1]
+
+    @staticmethod
+    def extract_custom_job_id(custom_job_name: str) -> str:
+        """Return unique id of the Custom Job pipeline."""
+        return custom_job_name.rpartition("/")[-1]
+
+    def wait_for_operation(self, operation: Operation, timeout: float | None = None):
+        """Wait for long-lasting operation to complete."""
         try:
             return operation.result(timeout=timeout)
         except Exception:
@@ -255,52 +268,48 @@ class CustomJobHook(GoogleBaseHook):
             raise AirflowException(error)
 
     def cancel_job(self) -> None:
-        """Cancel Job for training pipeline"""
+        """Cancel Job for training pipeline."""
         if self._job:
             self._job.cancel()
 
     def _run_job(
         self,
-        job: Union[
-            CustomTrainingJob,
-            CustomContainerTrainingJob,
-            CustomPythonPackageTrainingJob,
-        ],
-        dataset: Optional[
-            Union[
-                datasets.ImageDataset,
-                datasets.TabularDataset,
-                datasets.TextDataset,
-                datasets.VideoDataset,
-            ]
-        ] = None,
-        annotation_schema_uri: Optional[str] = None,
-        model_display_name: Optional[str] = None,
-        model_labels: Optional[Dict[str, str]] = None,
-        base_output_dir: Optional[str] = None,
-        service_account: Optional[str] = None,
-        network: Optional[str] = None,
-        bigquery_destination: Optional[str] = None,
-        args: Optional[List[Union[str, float, int]]] = None,
-        environment_variables: Optional[Dict[str, str]] = None,
+        job: (CustomTrainingJob | CustomContainerTrainingJob | CustomPythonPackageTrainingJob),
+        dataset: None
+        | (
+            datasets.ImageDataset | datasets.TabularDataset | datasets.TextDataset | datasets.VideoDataset
+        ) = None,
+        annotation_schema_uri: str | None = None,
+        model_display_name: str | None = None,
+        model_labels: dict[str, str] | None = None,
+        base_output_dir: str | None = None,
+        service_account: str | None = None,
+        network: str | None = None,
+        bigquery_destination: str | None = None,
+        args: list[str | float | int] | None = None,
+        environment_variables: dict[str, str] | None = None,
         replica_count: int = 1,
         machine_type: str = "n1-standard-4",
         accelerator_type: str = "ACCELERATOR_TYPE_UNSPECIFIED",
         accelerator_count: int = 0,
         boot_disk_type: str = "pd-ssd",
         boot_disk_size_gb: int = 100,
-        training_fraction_split: Optional[float] = None,
-        validation_fraction_split: Optional[float] = None,
-        test_fraction_split: Optional[float] = None,
-        training_filter_split: Optional[str] = None,
-        validation_filter_split: Optional[str] = None,
-        test_filter_split: Optional[str] = None,
-        predefined_split_column_name: Optional[str] = None,
-        timestamp_split_column_name: Optional[str] = None,
-        tensorboard: Optional[str] = None,
+        training_fraction_split: float | None = None,
+        validation_fraction_split: float | None = None,
+        test_fraction_split: float | None = None,
+        training_filter_split: str | None = None,
+        validation_filter_split: str | None = None,
+        test_filter_split: str | None = None,
+        predefined_split_column_name: str | None = None,
+        timestamp_split_column_name: str | None = None,
+        tensorboard: str | None = None,
         sync=True,
-    ) -> models.Model:
-        """Run Job for training pipeline"""
+        parent_model: str | None = None,
+        is_default_version: bool | None = None,
+        model_version_aliases: list[str] | None = None,
+        model_version_description: str | None = None,
+    ) -> tuple[models.Model | None, str, str]:
+        """Run Job for training pipeline."""
         model = job.run(
             dataset=dataset,
             annotation_schema_uri=annotation_schema_uri,
@@ -328,25 +337,44 @@ class CustomJobHook(GoogleBaseHook):
             timestamp_split_column_name=timestamp_split_column_name,
             tensorboard=tensorboard,
             sync=sync,
+            parent_model=parent_model,
+            is_default_version=is_default_version,
+            model_version_aliases=model_version_aliases,
+            model_version_description=model_version_description,
+        )
+        training_id = self.extract_training_id(job.resource_name)
+        custom_job_id = self.extract_custom_job_id(
+            job.gca_resource.training_task_metadata.get("backingCustomJob")
         )
         if model:
             model.wait()
-            return model
         else:
-            raise AirflowException("Training did not produce a Managed Model returning None.")
+            self.log.warning(
+                "Training did not produce a Managed Model returning None. Training Pipeline is not "
+                "configured to upload a Model. Create the Training Pipeline with "
+                "model_serving_container_image_uri and model_display_name passed in. "
+                "Ensure that your training script saves to model to os.environ['AIP_MODEL_DIR']."
+            )
+        return model, training_id, custom_job_id
 
     @GoogleBaseHook.fallback_to_default_project_id
+    @deprecated(
+        reason="Please use `PipelineJobHook.cancel_pipeline_job`",
+        category=AirflowProviderDeprecationWarning,
+    )
     def cancel_pipeline_job(
         self,
         project_id: str,
         region: str,
         pipeline_job: str,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> None:
         """
-        Cancels a PipelineJob. Starts asynchronous cancellation on the PipelineJob. The server makes a best
+        Cancel a PipelineJob.
+
+        Starts asynchronous cancellation on the PipelineJob. The server makes the best
         effort to cancel the pipeline, but success is not guaranteed. Clients can use
         [PipelineService.GetPipelineJob][google.cloud.aiplatform.v1.PipelineService.GetPipelineJob] or other
         methods to check whether the cancellation succeeded or whether the pipeline completed despite
@@ -354,6 +382,8 @@ class CustomJobHook(GoogleBaseHook):
         pipeline with a [PipelineJob.error][google.cloud.aiplatform.v1.PipelineJob.error] value with a
         [google.rpc.Status.code][google.rpc.Status.code] of 1, corresponding to ``Code.CANCELLED``, and
         [PipelineJob.state][google.cloud.aiplatform.v1.PipelineJob.state] is set to ``CANCELLED``.
+
+        This method is deprecated, please use `PipelineJobHook.cancel_pipeline_job` method.
 
         :param project_id: Required. The ID of the Google Cloud project that the service belongs to.
         :param region: Required. The ID of the Google Cloud region that the service belongs to.
@@ -367,7 +397,7 @@ class CustomJobHook(GoogleBaseHook):
 
         client.cancel_pipeline_job(
             request={
-                'name': name,
+                "name": name,
             },
             retry=retry,
             timeout=timeout,
@@ -380,13 +410,15 @@ class CustomJobHook(GoogleBaseHook):
         project_id: str,
         region: str,
         training_pipeline: str,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> None:
         """
-        Cancels a TrainingPipeline. Starts asynchronous cancellation on the TrainingPipeline. The server makes
-        a best effort to cancel the pipeline, but success is not guaranteed. Clients can use
+        Cancel a TrainingPipeline.
+
+        Starts asynchronous cancellation on the TrainingPipeline. The server makes
+        the best effort to cancel the pipeline, but success is not guaranteed. Clients can use
         [PipelineService.GetTrainingPipeline][google.cloud.aiplatform.v1.PipelineService.GetTrainingPipeline]
         or other methods to check whether the cancellation succeeded or whether the pipeline completed despite
         cancellation. On successful cancellation, the TrainingPipeline is not deleted; instead it becomes a
@@ -406,7 +438,7 @@ class CustomJobHook(GoogleBaseHook):
 
         client.cancel_training_pipeline(
             request={
-                'name': name,
+                "name": name,
             },
             retry=retry,
             timeout=timeout,
@@ -419,12 +451,14 @@ class CustomJobHook(GoogleBaseHook):
         project_id: str,
         region: str,
         custom_job: str,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> None:
         """
-        Cancels a CustomJob. Starts asynchronous cancellation on the CustomJob. The server makes a best effort
+        Cancel a CustomJob.
+
+        Starts asynchronous cancellation on the CustomJob. The server makes the best effort
         to cancel the job, but success is not guaranteed. Clients can use
         [JobService.GetCustomJob][google.cloud.aiplatform.v1.JobService.GetCustomJob] or other methods to
         check whether the cancellation succeeded or whether the job completed despite cancellation. On
@@ -445,7 +479,7 @@ class CustomJobHook(GoogleBaseHook):
 
         client.cancel_custom_job(
             request={
-                'name': name,
+                "name": name,
             },
             retry=retry,
             timeout=timeout,
@@ -453,18 +487,24 @@ class CustomJobHook(GoogleBaseHook):
         )
 
     @GoogleBaseHook.fallback_to_default_project_id
+    @deprecated(
+        reason="Please use `PipelineJobHook.create_pipeline_job`",
+        category=AirflowProviderDeprecationWarning,
+    )
     def create_pipeline_job(
         self,
         project_id: str,
         region: str,
         pipeline_job: PipelineJob,
         pipeline_job_id: str,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> PipelineJob:
         """
-        Creates a PipelineJob. A PipelineJob will run immediately when created.
+        Create a PipelineJob. A PipelineJob will run immediately when created.
+
+        This method is deprecated, please use `PipelineJobHook.create_pipeline_job` method.
 
         :param project_id: Required. The ID of the Google Cloud project that the service belongs to.
         :param region: Required. The ID of the Google Cloud region that the service belongs to.
@@ -482,9 +522,9 @@ class CustomJobHook(GoogleBaseHook):
 
         result = client.create_pipeline_job(
             request={
-                'parent': parent,
-                'pipeline_job': pipeline_job,
-                'pipeline_job_id': pipeline_job_id,
+                "parent": parent,
+                "pipeline_job": pipeline_job,
+                "pipeline_job_id": pipeline_job_id,
             },
             retry=retry,
             timeout=timeout,
@@ -498,12 +538,12 @@ class CustomJobHook(GoogleBaseHook):
         project_id: str,
         region: str,
         training_pipeline: TrainingPipeline,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> TrainingPipeline:
         """
-        Creates a TrainingPipeline. A created TrainingPipeline right away will be attempted to be run.
+        Create a TrainingPipeline. A created TrainingPipeline right away will be attempted to be run.
 
         :param project_id: Required. The ID of the Google Cloud project that the service belongs to.
         :param region: Required. The ID of the Google Cloud region that the service belongs to.
@@ -517,8 +557,8 @@ class CustomJobHook(GoogleBaseHook):
 
         result = client.create_training_pipeline(
             request={
-                'parent': parent,
-                'training_pipeline': training_pipeline,
+                "parent": parent,
+                "training_pipeline": training_pipeline,
             },
             retry=retry,
             timeout=timeout,
@@ -532,12 +572,12 @@ class CustomJobHook(GoogleBaseHook):
         project_id: str,
         region: str,
         custom_job: CustomJob,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> CustomJob:
         """
-        Creates a CustomJob. A created CustomJob right away will be attempted to be run.
+        Create a CustomJob. A created CustomJob right away will be attempted to be run.
 
         :param project_id: Required. The ID of the Google Cloud project that the service belongs to.
         :param region: Required. The ID of the Google Cloud region that the service belongs to.
@@ -552,8 +592,8 @@ class CustomJobHook(GoogleBaseHook):
 
         result = client.create_custom_job(
             request={
-                'parent': parent,
-                'custom_job': custom_job,
+                "parent": parent,
+                "custom_job": custom_job,
             },
             retry=retry,
             timeout=timeout,
@@ -569,58 +609,58 @@ class CustomJobHook(GoogleBaseHook):
         display_name: str,
         container_uri: str,
         command: Sequence[str] = [],
-        model_serving_container_image_uri: Optional[str] = None,
-        model_serving_container_predict_route: Optional[str] = None,
-        model_serving_container_health_route: Optional[str] = None,
-        model_serving_container_command: Optional[Sequence[str]] = None,
-        model_serving_container_args: Optional[Sequence[str]] = None,
-        model_serving_container_environment_variables: Optional[Dict[str, str]] = None,
-        model_serving_container_ports: Optional[Sequence[int]] = None,
-        model_description: Optional[str] = None,
-        model_instance_schema_uri: Optional[str] = None,
-        model_parameters_schema_uri: Optional[str] = None,
-        model_prediction_schema_uri: Optional[str] = None,
-        labels: Optional[Dict[str, str]] = None,
-        training_encryption_spec_key_name: Optional[str] = None,
-        model_encryption_spec_key_name: Optional[str] = None,
-        staging_bucket: Optional[str] = None,
+        model_serving_container_image_uri: str | None = None,
+        model_serving_container_predict_route: str | None = None,
+        model_serving_container_health_route: str | None = None,
+        model_serving_container_command: Sequence[str] | None = None,
+        model_serving_container_args: Sequence[str] | None = None,
+        model_serving_container_environment_variables: dict[str, str] | None = None,
+        model_serving_container_ports: Sequence[int] | None = None,
+        model_description: str | None = None,
+        model_instance_schema_uri: str | None = None,
+        model_parameters_schema_uri: str | None = None,
+        model_prediction_schema_uri: str | None = None,
+        parent_model: str | None = None,
+        is_default_version: bool | None = None,
+        model_version_aliases: list[str] | None = None,
+        model_version_description: str | None = None,
+        labels: dict[str, str] | None = None,
+        training_encryption_spec_key_name: str | None = None,
+        model_encryption_spec_key_name: str | None = None,
+        staging_bucket: str | None = None,
         # RUN
-        dataset: Optional[
-            Union[
-                datasets.ImageDataset,
-                datasets.TabularDataset,
-                datasets.TextDataset,
-                datasets.VideoDataset,
-            ]
-        ] = None,
-        annotation_schema_uri: Optional[str] = None,
-        model_display_name: Optional[str] = None,
-        model_labels: Optional[Dict[str, str]] = None,
-        base_output_dir: Optional[str] = None,
-        service_account: Optional[str] = None,
-        network: Optional[str] = None,
-        bigquery_destination: Optional[str] = None,
-        args: Optional[List[Union[str, float, int]]] = None,
-        environment_variables: Optional[Dict[str, str]] = None,
+        dataset: None
+        | (
+            datasets.ImageDataset | datasets.TabularDataset | datasets.TextDataset | datasets.VideoDataset
+        ) = None,
+        annotation_schema_uri: str | None = None,
+        model_display_name: str | None = None,
+        model_labels: dict[str, str] | None = None,
+        base_output_dir: str | None = None,
+        service_account: str | None = None,
+        network: str | None = None,
+        bigquery_destination: str | None = None,
+        args: list[str | float | int] | None = None,
+        environment_variables: dict[str, str] | None = None,
         replica_count: int = 1,
         machine_type: str = "n1-standard-4",
         accelerator_type: str = "ACCELERATOR_TYPE_UNSPECIFIED",
         accelerator_count: int = 0,
         boot_disk_type: str = "pd-ssd",
         boot_disk_size_gb: int = 100,
-        training_fraction_split: Optional[float] = None,
-        validation_fraction_split: Optional[float] = None,
-        test_fraction_split: Optional[float] = None,
-        training_filter_split: Optional[str] = None,
-        validation_filter_split: Optional[str] = None,
-        test_filter_split: Optional[str] = None,
-        predefined_split_column_name: Optional[str] = None,
-        timestamp_split_column_name: Optional[str] = None,
-        tensorboard: Optional[str] = None,
+        training_fraction_split: float | None = None,
+        validation_fraction_split: float | None = None,
+        test_fraction_split: float | None = None,
+        training_filter_split: str | None = None,
+        validation_filter_split: str | None = None,
+        test_filter_split: str | None = None,
+        predefined_split_column_name: str | None = None,
+        timestamp_split_column_name: str | None = None,
+        tensorboard: str | None = None,
         sync=True,
-    ) -> models.Model:
+    ) -> tuple[models.Model | None, str, str]:
         """
-        Create Custom Container Training Job
+        Create Custom Container Training Job.
 
         :param display_name: Required. The user-defined name of this TrainingPipeline.
         :param command: The command to be invoked when the container is started.
@@ -701,6 +741,24 @@ class CustomJobHook(GoogleBaseHook):
                 and probably different, including the URI scheme, than the
                 one given on input. The output URI will point to a location
                 where the user only has a read access.
+        :param parent_model: Optional. The resource name or model ID of an existing model.
+                The new model uploaded by this job will be a version of `parent_model`.
+                Only set this field when training a new version of an existing model.
+        :param is_default_version: Optional. When set to True, the newly uploaded model version will
+                automatically have alias "default" included. Subsequent uses of
+                the model produced by this job without a version specified will
+                use this "default" version.
+                When set to False, the "default" alias will not be moved.
+                Actions targeting the model version produced by this job will need
+                to specifically reference this version by ID or alias.
+                New model uploads, i.e. version 1, will always be "default" aliased.
+        :param model_version_aliases: Optional. User provided version aliases so that the model version
+                uploaded by this job can be referenced via alias instead of
+                auto-generated version ID. A default version alias will be created
+                for the first version of the model.
+                The format is [a-z][a-zA-Z0-9-]{0,126}[a-z0-9]
+        :param model_version_description: Optional. The description of the model version
+                being uploaded by this job.
         :param project_id: Project to run training in.
         :param region: Location to run training in.
         :param labels: Optional. The labels with user-defined metadata to
@@ -890,7 +948,7 @@ class CustomJobHook(GoogleBaseHook):
         if not self._job:
             raise AirflowException("CustomJob was not created")
 
-        model = self._run_job(
+        model, training_id, custom_job_id = self._run_job(
             job=self._job,
             dataset=dataset,
             annotation_schema_uri=annotation_schema_uri,
@@ -918,9 +976,13 @@ class CustomJobHook(GoogleBaseHook):
             timestamp_split_column_name=timestamp_split_column_name,
             tensorboard=tensorboard,
             sync=sync,
+            parent_model=parent_model,
+            is_default_version=is_default_version,
+            model_version_aliases=model_version_aliases,
+            model_version_description=model_version_description,
         )
 
-        return model
+        return model, training_id, custom_job_id
 
     @GoogleBaseHook.fallback_to_default_project_id
     def create_custom_python_package_training_job(
@@ -931,58 +993,58 @@ class CustomJobHook(GoogleBaseHook):
         python_package_gcs_uri: str,
         python_module_name: str,
         container_uri: str,
-        model_serving_container_image_uri: Optional[str] = None,
-        model_serving_container_predict_route: Optional[str] = None,
-        model_serving_container_health_route: Optional[str] = None,
-        model_serving_container_command: Optional[Sequence[str]] = None,
-        model_serving_container_args: Optional[Sequence[str]] = None,
-        model_serving_container_environment_variables: Optional[Dict[str, str]] = None,
-        model_serving_container_ports: Optional[Sequence[int]] = None,
-        model_description: Optional[str] = None,
-        model_instance_schema_uri: Optional[str] = None,
-        model_parameters_schema_uri: Optional[str] = None,
-        model_prediction_schema_uri: Optional[str] = None,
-        labels: Optional[Dict[str, str]] = None,
-        training_encryption_spec_key_name: Optional[str] = None,
-        model_encryption_spec_key_name: Optional[str] = None,
-        staging_bucket: Optional[str] = None,
+        model_serving_container_image_uri: str | None = None,
+        model_serving_container_predict_route: str | None = None,
+        model_serving_container_health_route: str | None = None,
+        model_serving_container_command: Sequence[str] | None = None,
+        model_serving_container_args: Sequence[str] | None = None,
+        model_serving_container_environment_variables: dict[str, str] | None = None,
+        model_serving_container_ports: Sequence[int] | None = None,
+        model_description: str | None = None,
+        model_instance_schema_uri: str | None = None,
+        model_parameters_schema_uri: str | None = None,
+        model_prediction_schema_uri: str | None = None,
+        labels: dict[str, str] | None = None,
+        training_encryption_spec_key_name: str | None = None,
+        model_encryption_spec_key_name: str | None = None,
+        staging_bucket: str | None = None,
         # RUN
-        dataset: Optional[
-            Union[
-                datasets.ImageDataset,
-                datasets.TabularDataset,
-                datasets.TextDataset,
-                datasets.VideoDataset,
-            ]
-        ] = None,
-        annotation_schema_uri: Optional[str] = None,
-        model_display_name: Optional[str] = None,
-        model_labels: Optional[Dict[str, str]] = None,
-        base_output_dir: Optional[str] = None,
-        service_account: Optional[str] = None,
-        network: Optional[str] = None,
-        bigquery_destination: Optional[str] = None,
-        args: Optional[List[Union[str, float, int]]] = None,
-        environment_variables: Optional[Dict[str, str]] = None,
+        dataset: None
+        | (
+            datasets.ImageDataset | datasets.TabularDataset | datasets.TextDataset | datasets.VideoDataset
+        ) = None,
+        annotation_schema_uri: str | None = None,
+        model_display_name: str | None = None,
+        model_labels: dict[str, str] | None = None,
+        base_output_dir: str | None = None,
+        service_account: str | None = None,
+        network: str | None = None,
+        bigquery_destination: str | None = None,
+        args: list[str | float | int] | None = None,
+        environment_variables: dict[str, str] | None = None,
         replica_count: int = 1,
         machine_type: str = "n1-standard-4",
         accelerator_type: str = "ACCELERATOR_TYPE_UNSPECIFIED",
         accelerator_count: int = 0,
         boot_disk_type: str = "pd-ssd",
         boot_disk_size_gb: int = 100,
-        training_fraction_split: Optional[float] = None,
-        validation_fraction_split: Optional[float] = None,
-        test_fraction_split: Optional[float] = None,
-        training_filter_split: Optional[str] = None,
-        validation_filter_split: Optional[str] = None,
-        test_filter_split: Optional[str] = None,
-        predefined_split_column_name: Optional[str] = None,
-        timestamp_split_column_name: Optional[str] = None,
-        tensorboard: Optional[str] = None,
+        training_fraction_split: float | None = None,
+        validation_fraction_split: float | None = None,
+        test_fraction_split: float | None = None,
+        training_filter_split: str | None = None,
+        validation_filter_split: str | None = None,
+        test_filter_split: str | None = None,
+        predefined_split_column_name: str | None = None,
+        timestamp_split_column_name: str | None = None,
+        tensorboard: str | None = None,
+        parent_model: str | None = None,
+        is_default_version: bool | None = None,
+        model_version_aliases: list[str] | None = None,
+        model_version_description: str | None = None,
         sync=True,
-    ) -> models.Model:
+    ) -> tuple[models.Model | None, str, str]:
         """
-        Create Custom Python Package Training Job
+        Create Custom Python Package Training Job.
 
         :param display_name: Required. The user-defined name of this TrainingPipeline.
         :param python_package_gcs_uri: Required: GCS location of the training python package.
@@ -1063,6 +1125,24 @@ class CustomJobHook(GoogleBaseHook):
                 and probably different, including the URI scheme, than the
                 one given on input. The output URI will point to a location
                 where the user only has a read access.
+        :param parent_model: Optional. The resource name or model ID of an existing model.
+                The new model uploaded by this job will be a version of `parent_model`.
+                Only set this field when training a new version of an existing model.
+        :param is_default_version: Optional. When set to True, the newly uploaded model version will
+                automatically have alias "default" included. Subsequent uses of
+                the model produced by this job without a version specified will
+                use this "default" version.
+                When set to False, the "default" alias will not be moved.
+                Actions targeting the model version produced by this job will need
+                to specifically reference this version by ID or alias.
+                New model uploads, i.e. version 1, will always be "default" aliased.
+        :param model_version_aliases: Optional. User provided version aliases so that the model version
+                uploaded by this job can be referenced via alias instead of
+                auto-generated version ID. A default version alias will be created
+                for the first version of the model.
+                The format is [a-z][a-zA-Z0-9-]{0,126}[a-z0-9]
+        :param model_version_description: Optional. The description of the model version
+                being uploaded by this job.
         :param project_id: Project to run training in.
         :param region: Location to run training in.
         :param labels: Optional. The labels with user-defined metadata to
@@ -1252,7 +1332,7 @@ class CustomJobHook(GoogleBaseHook):
         if not self._job:
             raise AirflowException("CustomJob was not created")
 
-        model = self._run_job(
+        model, training_id, custom_job_id = self._run_job(
             job=self._job,
             dataset=dataset,
             annotation_schema_uri=annotation_schema_uri,
@@ -1280,9 +1360,13 @@ class CustomJobHook(GoogleBaseHook):
             timestamp_split_column_name=timestamp_split_column_name,
             tensorboard=tensorboard,
             sync=sync,
+            parent_model=parent_model,
+            is_default_version=is_default_version,
+            model_version_aliases=model_version_aliases,
+            model_version_description=model_version_description,
         )
 
-        return model
+        return model, training_id, custom_job_id
 
     @GoogleBaseHook.fallback_to_default_project_id
     def create_custom_training_job(
@@ -1292,59 +1376,59 @@ class CustomJobHook(GoogleBaseHook):
         display_name: str,
         script_path: str,
         container_uri: str,
-        requirements: Optional[Sequence[str]] = None,
-        model_serving_container_image_uri: Optional[str] = None,
-        model_serving_container_predict_route: Optional[str] = None,
-        model_serving_container_health_route: Optional[str] = None,
-        model_serving_container_command: Optional[Sequence[str]] = None,
-        model_serving_container_args: Optional[Sequence[str]] = None,
-        model_serving_container_environment_variables: Optional[Dict[str, str]] = None,
-        model_serving_container_ports: Optional[Sequence[int]] = None,
-        model_description: Optional[str] = None,
-        model_instance_schema_uri: Optional[str] = None,
-        model_parameters_schema_uri: Optional[str] = None,
-        model_prediction_schema_uri: Optional[str] = None,
-        labels: Optional[Dict[str, str]] = None,
-        training_encryption_spec_key_name: Optional[str] = None,
-        model_encryption_spec_key_name: Optional[str] = None,
-        staging_bucket: Optional[str] = None,
+        requirements: Sequence[str] | None = None,
+        model_serving_container_image_uri: str | None = None,
+        model_serving_container_predict_route: str | None = None,
+        model_serving_container_health_route: str | None = None,
+        model_serving_container_command: Sequence[str] | None = None,
+        model_serving_container_args: Sequence[str] | None = None,
+        model_serving_container_environment_variables: dict[str, str] | None = None,
+        model_serving_container_ports: Sequence[int] | None = None,
+        model_description: str | None = None,
+        model_instance_schema_uri: str | None = None,
+        model_parameters_schema_uri: str | None = None,
+        model_prediction_schema_uri: str | None = None,
+        parent_model: str | None = None,
+        is_default_version: bool | None = None,
+        model_version_aliases: list[str] | None = None,
+        model_version_description: str | None = None,
+        labels: dict[str, str] | None = None,
+        training_encryption_spec_key_name: str | None = None,
+        model_encryption_spec_key_name: str | None = None,
+        staging_bucket: str | None = None,
         # RUN
-        dataset: Optional[
-            Union[
-                datasets.ImageDataset,
-                datasets.TabularDataset,
-                datasets.TextDataset,
-                datasets.VideoDataset,
-            ]
-        ] = None,
-        annotation_schema_uri: Optional[str] = None,
-        model_display_name: Optional[str] = None,
-        model_labels: Optional[Dict[str, str]] = None,
-        base_output_dir: Optional[str] = None,
-        service_account: Optional[str] = None,
-        network: Optional[str] = None,
-        bigquery_destination: Optional[str] = None,
-        args: Optional[List[Union[str, float, int]]] = None,
-        environment_variables: Optional[Dict[str, str]] = None,
+        dataset: None
+        | (
+            datasets.ImageDataset | datasets.TabularDataset | datasets.TextDataset | datasets.VideoDataset
+        ) = None,
+        annotation_schema_uri: str | None = None,
+        model_display_name: str | None = None,
+        model_labels: dict[str, str] | None = None,
+        base_output_dir: str | None = None,
+        service_account: str | None = None,
+        network: str | None = None,
+        bigquery_destination: str | None = None,
+        args: list[str | float | int] | None = None,
+        environment_variables: dict[str, str] | None = None,
         replica_count: int = 1,
         machine_type: str = "n1-standard-4",
         accelerator_type: str = "ACCELERATOR_TYPE_UNSPECIFIED",
         accelerator_count: int = 0,
         boot_disk_type: str = "pd-ssd",
         boot_disk_size_gb: int = 100,
-        training_fraction_split: Optional[float] = None,
-        validation_fraction_split: Optional[float] = None,
-        test_fraction_split: Optional[float] = None,
-        training_filter_split: Optional[str] = None,
-        validation_filter_split: Optional[str] = None,
-        test_filter_split: Optional[str] = None,
-        predefined_split_column_name: Optional[str] = None,
-        timestamp_split_column_name: Optional[str] = None,
-        tensorboard: Optional[str] = None,
+        training_fraction_split: float | None = None,
+        validation_fraction_split: float | None = None,
+        test_fraction_split: float | None = None,
+        training_filter_split: str | None = None,
+        validation_filter_split: str | None = None,
+        test_filter_split: str | None = None,
+        predefined_split_column_name: str | None = None,
+        timestamp_split_column_name: str | None = None,
+        tensorboard: str | None = None,
         sync=True,
-    ) -> models.Model:
+    ) -> tuple[models.Model | None, str, str]:
         """
-        Create Custom Training Job
+        Create Custom Training Job.
 
         :param display_name: Required. The user-defined name of this TrainingPipeline.
         :param script_path: Required. Local path to training script.
@@ -1425,6 +1509,24 @@ class CustomJobHook(GoogleBaseHook):
                 and probably different, including the URI scheme, than the
                 one given on input. The output URI will point to a location
                 where the user only has a read access.
+        :param parent_model: Optional. The resource name or model ID of an existing model.
+                The new model uploaded by this job will be a version of `parent_model`.
+                Only set this field when training a new version of an existing model.
+        :param is_default_version: Optional. When set to True, the newly uploaded model version will
+                automatically have alias "default" included. Subsequent uses of
+                the model produced by this job without a version specified will
+                use this "default" version.
+                When set to False, the "default" alias will not be moved.
+                Actions targeting the model version produced by this job will need
+                to specifically reference this version by ID or alias.
+                New model uploads, i.e. version 1, will always be "default" aliased.
+        :param model_version_aliases: Optional. User provided version aliases so that the model version
+                uploaded by this job can be referenced via alias instead of
+                auto-generated version ID. A default version alias will be created
+                for the first version of the model.
+                The format is [a-z][a-zA-Z0-9-]{0,126}[a-z0-9]
+        :param model_version_description: Optional. The description of the model version
+                being uploaded by this job.
         :param project_id: Project to run training in.
         :param region: Location to run training in.
         :param labels: Optional. The labels with user-defined metadata to
@@ -1614,7 +1716,7 @@ class CustomJobHook(GoogleBaseHook):
         if not self._job:
             raise AirflowException("CustomJob was not created")
 
-        model = self._run_job(
+        model, training_id, custom_job_id = self._run_job(
             job=self._job,
             dataset=dataset,
             annotation_schema_uri=annotation_schema_uri,
@@ -1642,22 +1744,32 @@ class CustomJobHook(GoogleBaseHook):
             timestamp_split_column_name=timestamp_split_column_name,
             tensorboard=tensorboard,
             sync=sync,
+            parent_model=parent_model,
+            is_default_version=is_default_version,
+            model_version_aliases=model_version_aliases,
+            model_version_description=model_version_description,
         )
 
-        return model
+        return model, training_id, custom_job_id
 
     @GoogleBaseHook.fallback_to_default_project_id
+    @deprecated(
+        reason="Please use `PipelineJobHook.delete_pipeline_job`",
+        category=AirflowProviderDeprecationWarning,
+    )
     def delete_pipeline_job(
         self,
         project_id: str,
         region: str,
         pipeline_job: str,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> Operation:
         """
-        Deletes a PipelineJob.
+        Delete a PipelineJob.
+
+        This method is deprecated, please use `PipelineJobHook.delete_pipeline_job` method.
 
         :param project_id: Required. The ID of the Google Cloud project that the service belongs to.
         :param region: Required. The ID of the Google Cloud region that the service belongs to.
@@ -1671,7 +1783,7 @@ class CustomJobHook(GoogleBaseHook):
 
         result = client.delete_pipeline_job(
             request={
-                'name': name,
+                "name": name,
             },
             retry=retry,
             timeout=timeout,
@@ -1685,12 +1797,12 @@ class CustomJobHook(GoogleBaseHook):
         project_id: str,
         region: str,
         training_pipeline: str,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> Operation:
         """
-        Deletes a TrainingPipeline.
+        Delete a TrainingPipeline.
 
         :param project_id: Required. The ID of the Google Cloud project that the service belongs to.
         :param region: Required. The ID of the Google Cloud region that the service belongs to.
@@ -1704,7 +1816,7 @@ class CustomJobHook(GoogleBaseHook):
 
         result = client.delete_training_pipeline(
             request={
-                'name': name,
+                "name": name,
             },
             retry=retry,
             timeout=timeout,
@@ -1718,12 +1830,12 @@ class CustomJobHook(GoogleBaseHook):
         project_id: str,
         region: str,
         custom_job: str,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> Operation:
         """
-        Deletes a CustomJob.
+        Delete a CustomJob.
 
         :param project_id: Required. The ID of the Google Cloud project that the service belongs to.
         :param region: Required. The ID of the Google Cloud region that the service belongs to.
@@ -1737,7 +1849,7 @@ class CustomJobHook(GoogleBaseHook):
 
         result = client.delete_custom_job(
             request={
-                'name': name,
+                "name": name,
             },
             retry=retry,
             timeout=timeout,
@@ -1746,17 +1858,23 @@ class CustomJobHook(GoogleBaseHook):
         return result
 
     @GoogleBaseHook.fallback_to_default_project_id
+    @deprecated(
+        reason="Please use `PipelineJobHook.get_pipeline_job`",
+        category=AirflowProviderDeprecationWarning,
+    )
     def get_pipeline_job(
         self,
         project_id: str,
         region: str,
         pipeline_job: str,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> PipelineJob:
         """
-        Gets a PipelineJob.
+        Get a PipelineJob.
+
+        This method is deprecated, please use `PipelineJobHook.get_pipeline_job` method.
 
         :param project_id: Required. The ID of the Google Cloud project that the service belongs to.
         :param region: Required. The ID of the Google Cloud region that the service belongs to.
@@ -1770,7 +1888,7 @@ class CustomJobHook(GoogleBaseHook):
 
         result = client.get_pipeline_job(
             request={
-                'name': name,
+                "name": name,
             },
             retry=retry,
             timeout=timeout,
@@ -1784,12 +1902,12 @@ class CustomJobHook(GoogleBaseHook):
         project_id: str,
         region: str,
         training_pipeline: str,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> TrainingPipeline:
         """
-        Gets a TrainingPipeline.
+        Get a TrainingPipeline.
 
         :param project_id: Required. The ID of the Google Cloud project that the service belongs to.
         :param region: Required. The ID of the Google Cloud region that the service belongs to.
@@ -1803,7 +1921,7 @@ class CustomJobHook(GoogleBaseHook):
 
         result = client.get_training_pipeline(
             request={
-                'name': name,
+                "name": name,
             },
             retry=retry,
             timeout=timeout,
@@ -1817,12 +1935,12 @@ class CustomJobHook(GoogleBaseHook):
         project_id: str,
         region: str,
         custom_job: str,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> CustomJob:
         """
-        Gets a CustomJob.
+        Get a CustomJob.
 
         :param project_id: Required. The ID of the Google Cloud project that the service belongs to.
         :param region: Required. The ID of the Google Cloud region that the service belongs to.
@@ -1836,7 +1954,7 @@ class CustomJobHook(GoogleBaseHook):
 
         result = client.get_custom_job(
             request={
-                'name': name,
+                "name": name,
             },
             retry=retry,
             timeout=timeout,
@@ -1845,20 +1963,26 @@ class CustomJobHook(GoogleBaseHook):
         return result
 
     @GoogleBaseHook.fallback_to_default_project_id
+    @deprecated(
+        reason="Please use `PipelineJobHook.list_pipeline_jobs`",
+        category=AirflowProviderDeprecationWarning,
+    )
     def list_pipeline_jobs(
         self,
         project_id: str,
         region: str,
-        page_size: Optional[int] = None,
-        page_token: Optional[str] = None,
-        filter: Optional[str] = None,
-        order_by: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        page_size: int | None = None,
+        page_token: str | None = None,
+        filter: str | None = None,
+        order_by: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> ListPipelineJobsPager:
         """
-        Lists PipelineJobs in a Location.
+        List PipelineJobs in a Location.
+
+        This method is deprecated, please use `PipelineJobHook.list_pipeline_jobs` method.
 
         :param project_id: Required. The ID of the Google Cloud project that the service belongs to.
         :param region: Required. The ID of the Google Cloud region that the service belongs to.
@@ -1920,11 +2044,11 @@ class CustomJobHook(GoogleBaseHook):
 
         result = client.list_pipeline_jobs(
             request={
-                'parent': parent,
-                'page_size': page_size,
-                'page_token': page_token,
-                'filter': filter,
-                'order_by': order_by,
+                "parent": parent,
+                "page_size": page_size,
+                "page_token": page_token,
+                "filter": filter,
+                "order_by": order_by,
             },
             retry=retry,
             timeout=timeout,
@@ -1937,16 +2061,16 @@ class CustomJobHook(GoogleBaseHook):
         self,
         project_id: str,
         region: str,
-        page_size: Optional[int] = None,
-        page_token: Optional[str] = None,
-        filter: Optional[str] = None,
-        read_mask: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        page_size: int | None = None,
+        page_token: str | None = None,
+        filter: str | None = None,
+        read_mask: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> ListTrainingPipelinesPager:
         """
-        Lists TrainingPipelines in a Location.
+        List TrainingPipelines in a Location.
 
         :param project_id: Required. The ID of the Google Cloud project that the service belongs to.
         :param region: Required. The ID of the Google Cloud region that the service belongs to.
@@ -1981,11 +2105,11 @@ class CustomJobHook(GoogleBaseHook):
 
         result = client.list_training_pipelines(
             request={
-                'parent': parent,
-                'page_size': page_size,
-                'page_token': page_token,
-                'filter': filter,
-                'read_mask': read_mask,
+                "parent": parent,
+                "page_size": page_size,
+                "page_token": page_token,
+                "filter": filter,
+                "read_mask": read_mask,
             },
             retry=retry,
             timeout=timeout,
@@ -1998,16 +2122,16 @@ class CustomJobHook(GoogleBaseHook):
         self,
         project_id: str,
         region: str,
-        page_size: Optional[int],
-        page_token: Optional[str],
-        filter: Optional[str],
-        read_mask: Optional[str],
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        page_size: int | None,
+        page_token: str | None,
+        filter: str | None,
+        read_mask: str | None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> ListCustomJobsPager:
         """
-        Lists CustomJobs in a Location.
+        List CustomJobs in a Location.
 
         :param project_id: Required. The ID of the Google Cloud project that the service belongs to.
         :param region: Required. The ID of the Google Cloud region that the service belongs to.
@@ -2042,11 +2166,11 @@ class CustomJobHook(GoogleBaseHook):
 
         result = client.list_custom_jobs(
             request={
-                'parent': parent,
-                'page_size': page_size,
-                'page_token': page_token,
-                'filter': filter,
-                'read_mask': read_mask,
+                "parent": parent,
+                "page_size": page_size,
+                "page_token": page_token,
+                "filter": filter,
+                "read_mask": read_mask,
             },
             retry=retry,
             timeout=timeout,

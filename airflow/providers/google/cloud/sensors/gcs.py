@@ -16,17 +16,30 @@
 # specific language governing permissions and limitations
 # under the License.
 """This module contains Google Cloud Storage sensors."""
+from __future__ import annotations
 
 import os
 import textwrap
-from datetime import datetime
-from typing import TYPE_CHECKING, Callable, List, Optional, Sequence, Set, Union
+from datetime import datetime, timedelta
+from typing import TYPE_CHECKING, Any, Callable, Sequence
 
-from airflow.exceptions import AirflowException
+from deprecated import deprecated
+from google.cloud.storage.retry import DEFAULT_RETRY
+
+from airflow.configuration import conf
+from airflow.exceptions import AirflowException, AirflowProviderDeprecationWarning, AirflowSkipException
 from airflow.providers.google.cloud.hooks.gcs import GCSHook
+from airflow.providers.google.cloud.triggers.gcs import (
+    GCSBlobTrigger,
+    GCSCheckBlobUpdateTimeTrigger,
+    GCSPrefixBlobTrigger,
+    GCSUploadSessionTrigger,
+)
 from airflow.sensors.base import BaseSensorOperator, poke_mode_only
 
 if TYPE_CHECKING:
+    from google.api_core.retry import Retry
+
     from airflow.utils.context import Context
 
 
@@ -37,11 +50,117 @@ class GCSObjectExistenceSensor(BaseSensorOperator):
     :param bucket: The Google Cloud Storage bucket where the object is.
     :param object: The name of the object to check in the Google cloud
         storage bucket.
+    :param use_glob: When set to True the object parameter is interpreted as glob
     :param google_cloud_conn_id: The connection ID to use when
         connecting to Google Cloud Storage.
-    :param delegate_to: The account to impersonate using domain-wide delegation of authority,
-        if any. For this to work, the service account making the request must have
-        domain-wide delegation enabled.
+    :param impersonation_chain: Optional service account to impersonate using short-term
+        credentials, or chained list of accounts required to get the access_token
+        of the last account in the list, which will be impersonated in the request.
+        If set as a string, the account must grant the originating account
+        the Service Account Token Creator IAM role.
+        If set as a sequence, the identities from the list must grant
+        Service Account Token Creator IAM role to the directly preceding identity, with first
+        account from the list granting this role to the originating account (templated).
+    :param retry: (Optional) How to retry the RPC
+    """
+
+    template_fields: Sequence[str] = (
+        "bucket",
+        "object",
+        "impersonation_chain",
+    )
+    ui_color = "#f0eee4"
+
+    def __init__(
+        self,
+        *,
+        bucket: str,
+        object: str,
+        use_glob: bool = False,
+        google_cloud_conn_id: str = "google_cloud_default",
+        impersonation_chain: str | Sequence[str] | None = None,
+        retry: Retry = DEFAULT_RETRY,
+        deferrable: bool = conf.getboolean("operators", "default_deferrable", fallback=False),
+        **kwargs,
+    ) -> None:
+        super().__init__(**kwargs)
+        self.bucket = bucket
+        self.object = object
+        self.use_glob = use_glob
+        self.google_cloud_conn_id = google_cloud_conn_id
+        self._matches: list[str] = []
+        self.impersonation_chain = impersonation_chain
+        self.retry = retry
+
+        self.deferrable = deferrable
+
+    def poke(self, context: Context) -> bool:
+        self.log.info("Sensor checks existence of : %s, %s", self.bucket, self.object)
+        hook = GCSHook(
+            gcp_conn_id=self.google_cloud_conn_id,
+            impersonation_chain=self.impersonation_chain,
+        )
+        if self.use_glob:
+            self._matches = hook.list(self.bucket, match_glob=self.object)
+            return bool(self._matches)
+        else:
+            return hook.exists(self.bucket, self.object, self.retry)
+
+    def execute(self, context: Context) -> None:
+        """Airflow runs this method on the worker and defers using the trigger."""
+        if not self.deferrable:
+            super().execute(context)
+        else:
+            if not self.poke(context=context):
+                self.defer(
+                    timeout=timedelta(seconds=self.timeout),
+                    trigger=GCSBlobTrigger(
+                        bucket=self.bucket,
+                        object_name=self.object,
+                        use_glob=self.use_glob,
+                        poke_interval=self.poke_interval,
+                        google_cloud_conn_id=self.google_cloud_conn_id,
+                        hook_params={
+                            "impersonation_chain": self.impersonation_chain,
+                        },
+                    ),
+                    method_name="execute_complete",
+                )
+
+    def execute_complete(self, context: Context, event: dict[str, str]) -> str:
+        """
+        Act as a callback for when the trigger fires - returns immediately.
+
+        Relies on trigger to throw an exception, otherwise it assumes execution was successful.
+        """
+        if event["status"] == "error":
+            # TODO: remove this if check when min_airflow_version is set to higher than 2.7.1
+            if self.soft_fail:
+                raise AirflowSkipException(event["message"])
+            raise AirflowException(event["message"])
+        self.log.info("File %s was found in bucket %s.", self.object, self.bucket)
+        return event["message"]
+
+
+@deprecated(
+    reason=(
+        "Class `GCSObjectExistenceAsyncSensor` is deprecated and will be removed in a future release. "
+        "Please use `GCSObjectExistenceSensor` and set `deferrable` attribute to `True` instead"
+    ),
+    category=AirflowProviderDeprecationWarning,
+)
+class GCSObjectExistenceAsyncSensor(GCSObjectExistenceSensor):
+    """
+    Checks for the existence of a file in Google Cloud Storage.
+
+    This class is deprecated and will be removed in a future release.
+
+    Please use :class:`airflow.providers.google.cloud.sensors.gcs.GCSObjectExistenceSensor`
+    and set *deferrable* attribute to *True* instead.
+
+    :param bucket: The Google Cloud Storage bucket where the object is.
+    :param object: The name of the object to check in the Google cloud storage bucket.
+    :param google_cloud_conn_id: The connection ID to use when connecting to Google Cloud Storage.
     :param impersonation_chain: Optional service account to impersonate using short-term
         credentials, or chained list of accounts required to get the access_token
         of the last account in the list, which will be impersonated in the request.
@@ -52,47 +171,16 @@ class GCSObjectExistenceSensor(BaseSensorOperator):
         account from the list granting this role to the originating account (templated).
     """
 
-    template_fields: Sequence[str] = (
-        'bucket',
-        'object',
-        'impersonation_chain',
-    )
-    ui_color = '#f0eee4'
-
-    def __init__(
-        self,
-        *,
-        bucket: str,
-        object: str,
-        google_cloud_conn_id: str = 'google_cloud_default',
-        delegate_to: Optional[str] = None,
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
-        **kwargs,
-    ) -> None:
-
-        super().__init__(**kwargs)
-        self.bucket = bucket
-        self.object = object
-        self.google_cloud_conn_id = google_cloud_conn_id
-        self.delegate_to = delegate_to
-        self.impersonation_chain = impersonation_chain
-
-    def poke(self, context: "Context") -> bool:
-        self.log.info('Sensor checks existence of : %s, %s', self.bucket, self.object)
-        hook = GCSHook(
-            gcp_conn_id=self.google_cloud_conn_id,
-            delegate_to=self.delegate_to,
-            impersonation_chain=self.impersonation_chain,
-        )
-        return hook.exists(self.bucket, self.object)
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(deferrable=True, **kwargs)
 
 
 def ts_function(context):
     """
-    Default callback for the GoogleCloudStorageObjectUpdatedSensor. The default
-    behaviour is check for the object being updated after the data interval's
-    end, or execution_date + interval on Airflow versions prior to 2.2 (before
-    AIP-39 implementation).
+    Act as a default callback for the GoogleCloudStorageObjectUpdatedSensor.
+
+    The default behaviour is check for the object being updated after the data interval's end,
+    or execution_date + interval on Airflow versions prior to 2.2 (before AIP-39 implementation).
     """
     try:
         return context["data_interval_end"]
@@ -112,9 +200,6 @@ class GCSObjectUpdateSensor(BaseSensorOperator):
         as parameter.
     :param google_cloud_conn_id: The connection ID to use when
         connecting to Google Cloud Storage.
-    :param delegate_to: The account to impersonate using domain-wide delegation of authority,
-        if any. For this to work, the service account making the request must have
-        domain-wide delegation enabled.
     :param impersonation_chain: Optional service account to impersonate using short-term
         credentials, or chained list of accounts required to get the access_token
         of the last account in the list, which will be impersonated in the request.
@@ -123,42 +208,81 @@ class GCSObjectUpdateSensor(BaseSensorOperator):
         If set as a sequence, the identities from the list must grant
         Service Account Token Creator IAM role to the directly preceding identity, with first
         account from the list granting this role to the originating account (templated).
+    :param deferrable: Run sensor in deferrable mode
     """
 
     template_fields: Sequence[str] = (
-        'bucket',
-        'object',
-        'impersonation_chain',
+        "bucket",
+        "object",
+        "impersonation_chain",
     )
-    ui_color = '#f0eee4'
+    ui_color = "#f0eee4"
 
     def __init__(
         self,
         bucket: str,
         object: str,
         ts_func: Callable = ts_function,
-        google_cloud_conn_id: str = 'google_cloud_default',
-        delegate_to: Optional[str] = None,
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
+        google_cloud_conn_id: str = "google_cloud_default",
+        impersonation_chain: str | Sequence[str] | None = None,
+        deferrable: bool = conf.getboolean("operators", "default_deferrable", fallback=False),
         **kwargs,
     ) -> None:
-
         super().__init__(**kwargs)
         self.bucket = bucket
         self.object = object
         self.ts_func = ts_func
         self.google_cloud_conn_id = google_cloud_conn_id
-        self.delegate_to = delegate_to
         self.impersonation_chain = impersonation_chain
+        self.deferrable = deferrable
 
-    def poke(self, context: "Context") -> bool:
-        self.log.info('Sensor checks existence of : %s, %s', self.bucket, self.object)
+    def poke(self, context: Context) -> bool:
+        self.log.info("Sensor checks existence of : %s, %s", self.bucket, self.object)
         hook = GCSHook(
             gcp_conn_id=self.google_cloud_conn_id,
-            delegate_to=self.delegate_to,
             impersonation_chain=self.impersonation_chain,
         )
         return hook.is_updated_after(self.bucket, self.object, self.ts_func(context))
+
+    def execute(self, context: Context) -> None:
+        """Airflow runs this method on the worker and defers using the trigger."""
+        if self.deferrable is False:
+            super().execute(context)
+        else:
+            if not self.poke(context=context):
+                self.defer(
+                    timeout=timedelta(seconds=self.timeout),
+                    trigger=GCSCheckBlobUpdateTimeTrigger(
+                        bucket=self.bucket,
+                        object_name=self.object,
+                        target_date=self.ts_func(context),
+                        poke_interval=self.poke_interval,
+                        google_cloud_conn_id=self.google_cloud_conn_id,
+                        hook_params={
+                            "impersonation_chain": self.impersonation_chain,
+                        },
+                    ),
+                    method_name="execute_complete",
+                )
+
+    def execute_complete(self, context: dict[str, Any], event: dict[str, str] | None = None) -> str:
+        """Return immediately and rely on trigger to throw a success event. Callback for the trigger."""
+        if event:
+            if event["status"] == "success":
+                self.log.info(
+                    "Checking last updated time for object %s in bucket : %s", self.object, self.bucket
+                )
+                return event["message"]
+            # TODO: remove this if check when min_airflow_version is set to higher than 2.7.1
+            if self.soft_fail:
+                raise AirflowSkipException(event["message"])
+            raise AirflowException(event["message"])
+
+        # TODO: remove this if check when min_airflow_version is set to higher than 2.7.1
+        message = "No event received in trigger callback"
+        if self.soft_fail:
+            raise AirflowSkipException(message)
+        raise AirflowException(message)
 
 
 class GCSObjectsWithPrefixExistenceSensor(BaseSensorOperator):
@@ -174,9 +298,6 @@ class GCSObjectsWithPrefixExistenceSensor(BaseSensorOperator):
         storage bucket.
     :param google_cloud_conn_id: The connection ID to use when
         connecting to Google Cloud Storage.
-    :param delegate_to: The account to impersonate using domain-wide delegation of authority,
-        if any. For this to work, the service account making the request must have
-        domain-wide delegation enabled.
     :param impersonation_chain: Optional service account to impersonate using short-term
         credentials, or chained list of accounts required to get the access_token
         of the last account in the list, which will be impersonated in the request.
@@ -185,62 +306,90 @@ class GCSObjectsWithPrefixExistenceSensor(BaseSensorOperator):
         If set as a sequence, the identities from the list must grant
         Service Account Token Creator IAM role to the directly preceding identity, with first
         account from the list granting this role to the originating account (templated).
+    :param deferrable: Run sensor in deferrable mode
     """
 
     template_fields: Sequence[str] = (
-        'bucket',
-        'prefix',
-        'impersonation_chain',
+        "bucket",
+        "prefix",
+        "impersonation_chain",
     )
-    ui_color = '#f0eee4'
+    ui_color = "#f0eee4"
 
     def __init__(
         self,
         bucket: str,
         prefix: str,
-        google_cloud_conn_id: str = 'google_cloud_default',
-        delegate_to: Optional[str] = None,
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
+        google_cloud_conn_id: str = "google_cloud_default",
+        impersonation_chain: str | Sequence[str] | None = None,
+        deferrable: bool = conf.getboolean("operators", "default_deferrable", fallback=False),
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
         self.bucket = bucket
         self.prefix = prefix
         self.google_cloud_conn_id = google_cloud_conn_id
-        self.delegate_to = delegate_to
-        self._matches: List[str] = []
+        self._matches: list[str] = []
         self.impersonation_chain = impersonation_chain
+        self.deferrable = deferrable
 
-    def poke(self, context: "Context") -> bool:
-        self.log.info('Sensor checks existence of objects: %s, %s', self.bucket, self.prefix)
+    def poke(self, context: Context) -> bool:
+        self.log.info("Checking for existence of object: %s, %s", self.bucket, self.prefix)
         hook = GCSHook(
             gcp_conn_id=self.google_cloud_conn_id,
-            delegate_to=self.delegate_to,
             impersonation_chain=self.impersonation_chain,
         )
         self._matches = hook.list(self.bucket, prefix=self.prefix)
         return bool(self._matches)
 
-    def execute(self, context: "Context") -> List[str]:
-        """Overridden to allow matches to be passed"""
-        super().execute(context)
-        return self._matches
+    def execute(self, context: Context):
+        """Overridden to allow matches to be passed."""
+        self.log.info("Checking for existence of object: %s, %s", self.bucket, self.prefix)
+        if not self.deferrable:
+            super().execute(context)
+            return self._matches
+        else:
+            if not self.poke(context=context):
+                self.defer(
+                    timeout=timedelta(seconds=self.timeout),
+                    trigger=GCSPrefixBlobTrigger(
+                        bucket=self.bucket,
+                        prefix=self.prefix,
+                        poke_interval=self.poke_interval,
+                        google_cloud_conn_id=self.google_cloud_conn_id,
+                        hook_params={
+                            "impersonation_chain": self.impersonation_chain,
+                        },
+                    ),
+                    method_name="execute_complete",
+                )
+            else:
+                return self._matches
+
+    def execute_complete(self, context: dict[str, Any], event: dict[str, str | list[str]]) -> str | list[str]:
+        """Return immediately and rely on trigger to throw a success event. Callback for the trigger."""
+        self.log.info("Resuming from trigger and checking status")
+        if event["status"] == "success":
+            return event["matches"]
+        # TODO: remove this if check when min_airflow_version is set to higher than 2.7.1
+        if self.soft_fail:
+            raise AirflowSkipException(event["message"])
+        raise AirflowException(event["message"])
 
 
 def get_time():
-    """
-    This is just a wrapper of datetime.datetime.now to simplify mocking in the
-    unittests.
-    """
+    """Act as a wrapper of datetime.datetime.now to simplify mocking in the unittests."""
     return datetime.now()
 
 
 @poke_mode_only
 class GCSUploadSessionCompleteSensor(BaseSensorOperator):
     """
+    Return True if the inactivity period has passed with no increase in the number of objects in the bucket.
+
     Checks for changes in the number of objects at prefix in Google Cloud Storage
     bucket and returns True if the inactivity period has passed with no
-    increase in the number of objects. Note, this sensor will no behave correctly
+    increase in the number of objects. Note, this sensor will not behave correctly
     in reschedule mode, as the state of the listed objects in the GCS bucket will
     be lost between rescheduled invocations.
 
@@ -260,9 +409,6 @@ class GCSUploadSessionCompleteSensor(BaseSensorOperator):
         when this happens. If false an error will be raised.
     :param google_cloud_conn_id: The connection ID to use when connecting
         to Google Cloud Storage.
-    :param delegate_to: The account to impersonate using domain-wide delegation of authority,
-        if any. For this to work, the service account making the request must have
-        domain-wide delegation enabled.
     :param impersonation_chain: Optional service account to impersonate using short-term
         credentials, or chained list of accounts required to get the access_token
         of the last account in the list, which will be impersonated in the request.
@@ -271,14 +417,15 @@ class GCSUploadSessionCompleteSensor(BaseSensorOperator):
         If set as a sequence, the identities from the list must grant
         Service Account Token Creator IAM role to the directly preceding identity, with first
         account from the list granting this role to the originating account (templated).
+    :param deferrable: Run sensor in deferrable mode
     """
 
     template_fields: Sequence[str] = (
-        'bucket',
-        'prefix',
-        'impersonation_chain',
+        "bucket",
+        "prefix",
+        "impersonation_chain",
     )
-    ui_color = '#f0eee4'
+    ui_color = "#f0eee4"
 
     def __init__(
         self,
@@ -286,14 +433,13 @@ class GCSUploadSessionCompleteSensor(BaseSensorOperator):
         prefix: str,
         inactivity_period: float = 60 * 60,
         min_objects: int = 1,
-        previous_objects: Optional[Set[str]] = None,
+        previous_objects: set[str] | None = None,
         allow_delete: bool = True,
-        google_cloud_conn_id: str = 'google_cloud_default',
-        delegate_to: Optional[str] = None,
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
+        google_cloud_conn_id: str = "google_cloud_default",
+        impersonation_chain: str | Sequence[str] | None = None,
+        deferrable: bool = conf.getboolean("operators", "default_deferrable", fallback=False),
         **kwargs,
     ) -> None:
-
         super().__init__(**kwargs)
 
         self.bucket = bucket
@@ -302,28 +448,26 @@ class GCSUploadSessionCompleteSensor(BaseSensorOperator):
             raise ValueError("inactivity_period must be non-negative")
         self.inactivity_period = inactivity_period
         self.min_objects = min_objects
-        self.previous_objects = previous_objects if previous_objects else set()
+        self.previous_objects = previous_objects or set()
         self.inactivity_seconds = 0
         self.allow_delete = allow_delete
         self.google_cloud_conn_id = google_cloud_conn_id
-        self.delegate_to = delegate_to
         self.last_activity_time = None
         self.impersonation_chain = impersonation_chain
-        self.hook: Optional[GCSHook] = None
+        self.hook: GCSHook | None = None
+        self.deferrable = deferrable
 
-    def _get_gcs_hook(self) -> Optional[GCSHook]:
+    def _get_gcs_hook(self) -> GCSHook | None:
         if not self.hook:
             self.hook = GCSHook(
                 gcp_conn_id=self.google_cloud_conn_id,
-                delegate_to=self.delegate_to,
                 impersonation_chain=self.impersonation_chain,
             )
         return self.hook
 
-    def is_bucket_updated(self, current_objects: Set[str]) -> bool:
+    def is_bucket_updated(self, current_objects: set[str]) -> bool:
         """
-        Checks whether new objects have been uploaded and the inactivity_period
-        has passed and updates the state of the sensor accordingly.
+        Check whether new objects have been added and the inactivity_period has passed, and update the state.
 
         :param current_objects: set of object ids in bucket during last poke.
         """
@@ -359,10 +503,14 @@ class GCSUploadSessionCompleteSensor(BaseSensorOperator):
                 )
                 return False
 
-            raise AirflowException(
+            # TODO: remove this if check when min_airflow_version is set to higher than 2.7.1
+            message = (
                 "Illegal behavior: objects were deleted in "
                 f"{os.path.join(self.bucket, self.prefix)} between pokes."
             )
+            if self.soft_fail:
+                raise AirflowSkipException(message)
+            raise AirflowException(message)
 
         if self.last_activity_time:
             self.inactivity_seconds = (get_time() - self.last_activity_time).total_seconds()
@@ -394,7 +542,51 @@ class GCSUploadSessionCompleteSensor(BaseSensorOperator):
             return False
         return False
 
-    def poke(self, context: "Context") -> bool:
+    def poke(self, context: Context) -> bool:
         return self.is_bucket_updated(
             set(self._get_gcs_hook().list(self.bucket, prefix=self.prefix))  # type: ignore[union-attr]
         )
+
+    def execute(self, context: Context) -> None:
+        """Airflow runs this method on the worker and defers using the trigger."""
+        hook_params = {"impersonation_chain": self.impersonation_chain}
+
+        if not self.deferrable:
+            return super().execute(context)
+
+        if not self.poke(context=context):
+            self.defer(
+                timeout=timedelta(seconds=self.timeout),
+                trigger=GCSUploadSessionTrigger(
+                    bucket=self.bucket,
+                    prefix=self.prefix,
+                    poke_interval=self.poke_interval,
+                    google_cloud_conn_id=self.google_cloud_conn_id,
+                    inactivity_period=self.inactivity_period,
+                    min_objects=self.min_objects,
+                    previous_objects=self.previous_objects,
+                    allow_delete=self.allow_delete,
+                    hook_params=hook_params,
+                ),
+                method_name="execute_complete",
+            )
+
+    def execute_complete(self, context: dict[str, Any], event: dict[str, str] | None = None) -> str:
+        """Rely on trigger to throw an exception, otherwise it assumes execution was successful.
+
+        Callback for when the trigger fires - returns immediately.
+
+        """
+        if event:
+            if event["status"] == "success":
+                return event["message"]
+            # TODO: remove this if check when min_airflow_version is set to higher than 2.7.1
+            if self.soft_fail:
+                raise AirflowSkipException(event["message"])
+            raise AirflowException(event["message"])
+
+        # TODO: remove this if check when min_airflow_version is set to higher than 2.7.1
+        message = "No event received in trigger callback"
+        if self.soft_fail:
+            raise AirflowSkipException(message)
+        raise AirflowException(message)

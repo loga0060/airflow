@@ -14,8 +14,13 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Run ephemeral Docker Swarm services"""
-from typing import TYPE_CHECKING, List, Optional, Union
+"""Run ephemeral Docker Swarm services."""
+from __future__ import annotations
+
+import re
+from datetime import datetime
+from time import sleep
+from typing import TYPE_CHECKING
 
 from docker import types
 
@@ -30,6 +35,7 @@ if TYPE_CHECKING:
 class DockerSwarmOperator(DockerOperator):
     """
     Execute a command as an ephemeral docker swarm service.
+
     Example use-case - Using Docker Swarm orchestration to make one-time
     scripts highly available.
 
@@ -95,15 +101,14 @@ class DockerSwarmOperator(DockerOperator):
         *,
         image: str,
         enable_logging: bool = True,
-        configs: Optional[List[types.ConfigReference]] = None,
-        secrets: Optional[List[types.SecretReference]] = None,
-        mode: Optional[types.ServiceMode] = None,
-        networks: Optional[List[Union[str, types.NetworkAttachmentConfig]]] = None,
-        placement: Optional[Union[types.Placement, List[types.Placement]]] = None,
+        configs: list[types.ConfigReference] | None = None,
+        secrets: list[types.SecretReference] | None = None,
+        mode: types.ServiceMode | None = None,
+        networks: list[str | types.NetworkAttachmentConfig] | None = None,
+        placement: types.Placement | list[types.Placement] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(image=image, **kwargs)
-
         self.enable_logging = enable_logging
         self.service = None
         self.configs = configs
@@ -112,17 +117,12 @@ class DockerSwarmOperator(DockerOperator):
         self.networks = networks
         self.placement = placement
 
-    def execute(self, context: 'Context') -> None:
-        self.cli = self._get_cli()
-
-        self.environment['AIRFLOW_TMP_DIR'] = self.tmp_dir
-
+    def execute(self, context: Context) -> None:
+        self.environment["AIRFLOW_TMP_DIR"] = self.tmp_dir
         return self._run_service()
 
     def _run_service(self) -> None:
-        self.log.info('Starting docker service from image %s', self.image)
-        if not self.cli:
-            raise Exception("The 'cli' should be initialized before!")
+        self.log.info("Starting docker service from image %s", self.image)
         self.service = self.cli.create_service(
             types.TaskTemplate(
                 container_spec=types.ContainerSpec(
@@ -135,21 +135,21 @@ class DockerSwarmOperator(DockerOperator):
                     configs=self.configs,
                     secrets=self.secrets,
                 ),
-                restart_policy=types.RestartPolicy(condition='none'),
+                restart_policy=types.RestartPolicy(condition="none"),
                 resources=types.Resources(mem_limit=self.mem_limit),
                 networks=self.networks,
                 placement=self.placement,
             ),
-            name=f'airflow-{get_random_string()}',
-            labels={'name': f'airflow__{self.dag_id}__{self.task_id}'},
+            name=f"airflow-{get_random_string()}",
+            labels={"name": f"airflow__{self.dag_id}__{self.task_id}"},
             mode=self.mode,
         )
         if self.service is None:
             raise Exception("Service should be set here")
-        self.log.info('Service started: %s', str(self.service))
+        self.log.info("Service started: %s", self.service)
 
         # wait for the service to start the task
-        while not self.cli.tasks(filters={'service': self.service['ID']}):
+        while not self.cli.tasks(filters={"service": self.service["ID"]}):
             continue
 
         if self.enable_logging:
@@ -157,59 +157,67 @@ class DockerSwarmOperator(DockerOperator):
 
         while True:
             if self._has_service_terminated():
-                self.log.info('Service status before exiting: %s', self._service_status())
+                self.log.info("Service status before exiting: %s", self._service_status())
                 break
 
-        if self.service and self._service_status() != 'complete':
-            if self.auto_remove:
-                self.cli.remove_service(self.service['ID'])
-            raise AirflowException('Service did not complete: ' + repr(self.service))
-        elif self.auto_remove:
+        self.log.info("auto_removeauto_removeauto_removeauto_removeauto_remove : %s", str(self.auto_remove))
+        if self.service and self._service_status() != "complete":
+            if self.auto_remove == "success":
+                self.cli.remove_service(self.service["ID"])
+            raise AirflowException(f"Service did not complete: {self.service!r}")
+        elif self.auto_remove == "success":
             if not self.service:
                 raise Exception("The 'service' should be initialized before!")
-            self.cli.remove_service(self.service['ID'])
+            self.cli.remove_service(self.service["ID"])
 
-    def _service_status(self) -> Optional[str]:
-        if not self.cli:
-            raise Exception("The 'cli' should be initialized before!")
+    def _service_status(self) -> str | None:
         if not self.service:
             raise Exception("The 'service' should be initialized before!")
-        return self.cli.tasks(filters={'service': self.service['ID']})[0]['Status']['State']
+        return self.cli.tasks(filters={"service": self.service["ID"]})[0]["Status"]["State"]
 
     def _has_service_terminated(self) -> bool:
         status = self._service_status()
-        return status in ['complete', 'failed', 'shutdown', 'rejected', 'orphaned', 'remove']
+        return status in ["complete", "failed", "shutdown", "rejected", "orphaned", "remove"]
 
     def _stream_logs_to_output(self) -> None:
-        if not self.cli:
-            raise Exception("The 'cli' should be initialized before!")
         if not self.service:
             raise Exception("The 'service' should be initialized before!")
-        logs = self.cli.service_logs(
-            self.service['ID'], follow=True, stdout=True, stderr=True, is_tty=self.tty
-        )
-        line = ''
-        while True:
-            try:
-                log = next(logs)
-            except StopIteration:
-                # If the service log stream terminated, stop fetching logs further.
-                break
-            else:
-                try:
-                    log = log.decode()
-                except UnicodeDecodeError:
-                    continue
-                if log == '\n':
-                    self.log.info(line)
-                    line = ''
-                else:
-                    line += log
-        # flush any remaining log stream
-        if line:
-            self.log.info(line)
+        last_line_logged, last_timestamp = "", 0
+
+        def stream_new_logs(last_line_logged, since=0):
+            logs = self.cli.service_logs(
+                self.service["ID"],
+                follow=False,
+                stdout=True,
+                stderr=True,
+                is_tty=self.tty,
+                since=since,
+                timestamps=True,
+            )
+            logs = b"".join(logs).decode().splitlines()
+            if last_line_logged in logs:
+                logs = logs[logs.index(last_line_logged) + 1 :]
+            for line in logs:
+                match = re.match(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{6,}Z) (.*)", line)
+                timestamp, message = match.groups()
+                self.log.info(message)
+
+            if len(logs) == 0:
+                return last_line_logged, since
+
+            last_line_logged = line
+
+            # Floor nanoseconds to microseconds
+            last_timestamp = re.sub(r"(\.\d{6})\d+Z", r"\1Z", timestamp)
+            last_timestamp = datetime.strptime(last_timestamp, "%Y-%m-%dT%H:%M:%S.%fZ")
+            last_timestamp = last_timestamp.timestamp()
+            return last_line_logged, last_timestamp
+
+        while not self._has_service_terminated():
+            sleep(2)
+            last_line_logged, last_timestamp = stream_new_logs(last_line_logged, since=last_timestamp)
 
     def on_kill(self) -> None:
-        if self.cli is not None and self.service is not None:
-            self.log.info('Removing docker service: %s', self.service['ID'])
-            self.cli.remove_service(self.service['ID'])
+        if self.hook.client_created and self.service is not None:
+            self.log.info("Removing docker service: %s", self.service["ID"])
+            self.cli.remove_service(self.service["ID"])

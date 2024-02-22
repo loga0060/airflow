@@ -15,6 +15,8 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
+
 import sys
 from pathlib import Path
 
@@ -36,15 +38,22 @@ def check_file(the_file: Path) -> int:
     error_num = 0
     res = yaml.safe_load(the_file.read_text())
     console.print(f"Checking file [yellow]{the_file}[/]")
-    for job in res['jobs'].values():
-        for step in job['steps']:
-            uses = step.get('uses')
+    for job in res["jobs"].values():
+        for step in job["steps"]:
+            uses = step.get("uses")
             pretty_step = yaml.safe_dump(step, indent=2)
-            if uses is not None and uses.startswith('actions/checkout'):
-                with_clause = step.get('with')
+            if uses is not None and uses.startswith("actions/checkout"):
+                with_clause = step.get("with")
                 if with_clause is None:
                     console.print(f"\n[red]The `with` clause is missing in step:[/]\n\n{pretty_step}")
                     error_num += 1
+                    continue
+                path = with_clause.get("path")
+                if path == "constraints":
+                    # This is a special case - we are ok with persisting credentials in constraints
+                    # step, because we need them to push constraints back to the repository in "canary"
+                    # build. This is ok for security, because we are pushing it only in the `main` branch
+                    # of the repository and only for unprotected constraints branch
                     continue
                 persist_credentials = with_clause.get("persist-credentials")
                 if persist_credentials is None:
@@ -65,20 +74,20 @@ def check_file(the_file: Path) -> int:
     return error_num
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     total_err_num = 0
     for a_file in sys.argv[1:]:
         total_err_num += check_file(Path(a_file))
     if total_err_num:
         console.print(
             """
-[red]There are are some checkout instructions in github workflows that have no "persist_credentials"
+[red]There are some checkout instructions in github workflows that have no "persist_credentials"
 set to False.[/]
 
 For security reasons - make sure all of the checkout actions have persist_credentials set, similar to:
 
   - name: "Checkout ${{ github.ref }} ( ${{ github.sha }} )"
-    uses: actions/checkout@v2
+    uses: actions/checkout@v4
     with:
       persist-credentials: false
 

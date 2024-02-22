@@ -15,10 +15,11 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
 
 from datetime import datetime
 
-from airflow.models import DAG
+from airflow.models.dag import DAG
 from airflow.operators.empty import EmptyOperator
 
 DEFAULT_DATE = datetime(2016, 1, 1)

@@ -14,11 +14,12 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
 
 import json
 import os
 import subprocess
-import tempfile
+from importlib.util import find_spec
 from pathlib import Path
 
 import pytest
@@ -31,9 +32,20 @@ from docker_tests.docker_tests_utils import (
     run_bash_in_docker,
     run_python_in_docker,
 )
-from setup import PREINSTALLED_PROVIDERS
 
-INSTALLED_PROVIDER_PATH = SOURCE_ROOT / "scripts" / "ci" / "installed_providers.txt"
+AIRFLOW_PRE_INSTALLED_PROVIDERS_FILE_PATH = SOURCE_ROOT / "airflow_pre_installed_providers.txt"
+PROD_IMAGE_PROVIDERS_FILE_PATH = SOURCE_ROOT / "prod_image_installed_providers.txt"
+AIRFLOW_ROOT_PATH = Path(__file__).parents[2].resolve()
+SLIM_IMAGE_PROVIDERS = [
+    f"apache-airflow-providers-{provider_id.replace('.','-')}"
+    for provider_id in AIRFLOW_PRE_INSTALLED_PROVIDERS_FILE_PATH.read_text().splitlines()
+    if not provider_id.startswith("#")
+]
+REGULAR_IMAGE_PROVIDERS = [
+    f"apache-airflow-providers-{provider_id.replace('.','-')}"
+    for provider_id in PROD_IMAGE_PROVIDERS_FILE_PATH.read_text().splitlines()
+    if not provider_id.startswith("#")
+]
 
 
 class TestCommands:
@@ -77,24 +89,22 @@ class TestCommands:
 class TestPythonPackages:
     def test_required_providers_are_installed(self):
         if os.environ.get("TEST_SLIM_IMAGE"):
-            lines = PREINSTALLED_PROVIDERS
+            packages_to_install = set(SLIM_IMAGE_PROVIDERS)
+            package_file = AIRFLOW_PRE_INSTALLED_PROVIDERS_FILE_PATH
         else:
-            lines = (d.strip() for d in INSTALLED_PROVIDER_PATH.read_text().splitlines())
-            lines = (d for d in lines)
-        packages_to_install = {f"apache-airflow-providers-{d.replace('.', '-')}" for d in lines}
+            packages_to_install = set(REGULAR_IMAGE_PROVIDERS)
+            package_file = PROD_IMAGE_PROVIDERS_FILE_PATH
         assert len(packages_to_install) != 0
-
         output = run_bash_in_docker(
             "airflow providers list --output json", stderr=subprocess.DEVNULL, return_output=True
         )
         providers = json.loads(output)
-        packages_installed = {d['package_name'] for d in providers}
+        packages_installed = set(d["package_name"] for d in providers)
         assert len(packages_installed) != 0
 
-        assert packages_to_install == packages_installed, (
-            f"List of expected installed packages and image content mismatch. "
-            f"Check {INSTALLED_PROVIDER_PATH} file."
-        )
+        assert (
+            packages_to_install == packages_installed
+        ), f"List of expected installed packages and image content mismatch. Check {package_file} file."
 
     def test_pip_dependencies_conflict(self):
         try:
@@ -107,57 +117,56 @@ class TestPythonPackages:
         "amazon": ["boto3", "botocore", "watchtower"],
         "async": ["gevent", "eventlet", "greenlet"],
         "azure": [
-            'azure.batch',
-            'azure.cosmos',
-            'azure.datalake.store',
-            'azure.identity',
-            'azure.keyvault.secrets',
-            'azure.kusto.data',
-            'azure.mgmt.containerinstance',
-            'azure.mgmt.datalake.store',
-            'azure.mgmt.resource',
-            'azure.storage',
+            "azure.batch",
+            "azure.cosmos",
+            "azure.datalake.store",
+            "azure.identity",
+            "azure.keyvault.secrets",
+            "azure.kusto.data",
+            "azure.mgmt.containerinstance",
+            "azure.mgmt.datalake.store",
+            "azure.mgmt.resource",
+            "azure.storage",
         ],
         "celery": ["celery", "flower", "vine"],
         "cncf.kubernetes": ["kubernetes", "cryptography"],
-        "dask": ["cloudpickle", "distributed"],
         "docker": ["docker"],
-        "elasticsearch": ["elasticsearch", "es.elastic", "elasticsearch_dsl"],
+        "elasticsearch": ["elasticsearch"],
         "google": [
-            'OpenSSL',
-            'google.ads',
-            'googleapiclient',
-            'google.auth',
-            'google_auth_httplib2',
-            'google.cloud.automl',
-            'google.cloud.bigquery_datatransfer',
-            'google.cloud.bigtable',
-            'google.cloud.container',
-            'google.cloud.datacatalog',
-            'google.cloud.dataproc',
-            'google.cloud.dlp',
-            'google.cloud.kms',
-            'google.cloud.language',
-            'google.cloud.logging',
-            'google.cloud.memcache',
-            'google.cloud.monitoring',
-            'google.cloud.oslogin',
-            'google.cloud.pubsub',
-            'google.cloud.redis',
-            'google.cloud.secretmanager',
-            'google.cloud.spanner',
-            'google.cloud.speech',
-            'google.cloud.storage',
-            'google.cloud.tasks',
-            'google.cloud.texttospeech',
-            'google.cloud.translate',
-            'google.cloud.videointelligence',
-            'google.cloud.vision',
+            "OpenSSL",
+            # "google.ads", Remove google ads as it is vendored in google provider now
+            "googleapiclient",
+            "google.auth",
+            "google_auth_httplib2",
+            "google.cloud.automl",
+            "google.cloud.bigquery_datatransfer",
+            "google.cloud.bigtable",
+            "google.cloud.container",
+            "google.cloud.datacatalog",
+            "google.cloud.dataproc",
+            "google.cloud.dlp",
+            "google.cloud.kms",
+            "google.cloud.language",
+            "google.cloud.logging",
+            "google.cloud.memcache",
+            "google.cloud.monitoring",
+            "google.cloud.oslogin",
+            "google.cloud.pubsub",
+            "google.cloud.redis",
+            "google.cloud.secretmanager",
+            "google.cloud.spanner",
+            "google.cloud.speech",
+            "google.cloud.storage",
+            "google.cloud.tasks",
+            "google.cloud.texttospeech",
+            "google.cloud.translate",
+            "google.cloud.videointelligence",
+            "google.cloud.vision",
         ],
         "grpc": ["grpc", "google.auth", "google_auth_httplib2"],
         "hashicorp": ["hvac"],
         "ldap": ["ldap"],
-        "mysql": ["mysql"],
+        "mysql": ["MySQLdb", *(["mysql"] if bool(find_spec("mysql")) else [])],
         "postgres": ["psycopg2"],
         "pyodbc": ["pyodbc"],
         "redis": ["redis"],
@@ -191,27 +200,26 @@ class TestExecuteAsRoot:
             ]
         )
 
-    def test_run_custom_python_packages_as_root(self):
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            (Path(tmp_dir) / "__init__.py").write_text('')
-            (Path(tmp_dir) / "awesome.py").write_text('print("Awesome")')
+    def test_run_custom_python_packages_as_root(self, tmp_path):
+        (tmp_path / "__init__.py").write_text("")
+        (tmp_path / "awesome.py").write_text('print("Awesome")')
 
-            run_command(
-                [
-                    "docker",
-                    "run",
-                    "--rm",
-                    "-e",
-                    f"PYTHONPATH={tmp_dir}",
-                    "-e",
-                    "PYTHONDONTWRITEBYTECODE=true",
-                    "-v",
-                    f"{tmp_dir}:{tmp_dir}",
-                    "--user",
-                    "0",
-                    docker_image,
-                    "python",
-                    "-c",
-                    "import awesome",
-                ]
-            )
+        run_command(
+            [
+                "docker",
+                "run",
+                "--rm",
+                "-e",
+                f"PYTHONPATH={tmp_path}",
+                "-e",
+                "PYTHONDONTWRITEBYTECODE=true",
+                "-v",
+                f"{tmp_path}:{tmp_path}",
+                "--user",
+                "0",
+                docker_image,
+                "python",
+                "-c",
+                "import awesome",
+            ]
+        )

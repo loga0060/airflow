@@ -17,10 +17,10 @@
 """
 Visuals displayed to the user when entering Breeze shell.
 """
+from __future__ import annotations
 
 from airflow_breeze.global_constants import (
     FLOWER_HOST_PORT,
-    MSSQL_HOST_PORT,
     MYSQL_HOST_PORT,
     POSTGRES_HOST_PORT,
     REDIS_HOST_PORT,
@@ -84,7 +84,6 @@ CHEATSHEET = f"""
           * {FLOWER_HOST_PORT} -> forwarded to Flower dashboard -> airflow:5555
           * {POSTGRES_HOST_PORT} -> forwarded to Postgres database -> postgres:5432
           * {MYSQL_HOST_PORT} -> forwarded to MySQL database  -> mysql:3306
-          * {MSSQL_HOST_PORT} -> forwarded to MSSQL database  -> mssql:1443
           * {REDIS_HOST_PORT} -> forwarded to Redis broker -> redis:6379
 
         Direct links to those services that you can use from the host:
@@ -94,8 +93,6 @@ CHEATSHEET = f"""
           * Flower:    http://127.0.0.1:{FLOWER_HOST_PORT}
           * Postgres:  jdbc:postgresql://127.0.0.1:{POSTGRES_HOST_PORT}/airflow?user=postgres&password=airflow
           * Mysql:     jdbc:mysql://127.0.0.1:{MYSQL_HOST_PORT}/airflow?user=root
-          * MSSQL:     jdbc:sqlserver://127.0.0.1:{MSSQL_HOST_PORT};databaseName=airflow;user=sa;password=
-                       Airflow123
           * Redis:     redis://127.0.0.1:{REDIS_HOST_PORT}/0
 
     [info]* How can I add my stuff in Breeze:[/]
@@ -104,20 +101,25 @@ CHEATSHEET = f"""
           which is mounted from folder in Airflow sources:
           * `{AIRFLOW_SOURCES_ROOT}/files/dags`
 
+        * Your plugins are read from `/files/plugins` directory
+          which is mounted from folder in Airflow sources:
+          * `{AIRFLOW_SOURCES_ROOT}/files/plugins`
+
         * You can add `airflow-breeze-config` directory. Place it in
           `{AIRFLOW_SOURCES_ROOT}/files/airflow-breeze-config` and:
             * Add `variables.env` - to make breeze source the variables automatically for you
             * Add `.tmux.conf` - to add extra initial configuration to `tmux`
             * Add `init.sh` - this file will be sourced when you enter container, so you can add
               any custom code there.
+            * Add `requirements.
 
-        * You can put any other files. You can add them in
+        * You can also share other files, put them under
           `{AIRFLOW_SOURCES_ROOT}/files` folder
-          and they will be visible in `/files/` folder inside the container
+          and they will be visible in `/files/` folder inside the container.
 
         [info]* Other options[/]
 
-        Check out `--help` for ./breeze commands. It will show you other options, such as running
+        Check out `--help` for `breeze` command. It will show you other options, such as running
         integration or starting complete Airflow using `start-airflow` command as well as ways
         of cleaning up the installation.
 
@@ -126,7 +128,7 @@ CHEATSHEET = f"""
 
         You can disable this cheatsheet by running:
 
-            ./breeze config --no-cheatsheet
+            breeze setup config --no-cheatsheet
 
 """
 CHEATSHEET_STYLE = "white"

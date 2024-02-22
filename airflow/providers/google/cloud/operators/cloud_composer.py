@@ -15,34 +15,38 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-from typing import TYPE_CHECKING, Dict, Optional, Sequence, Tuple, Union
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Sequence
 
 from google.api_core.exceptions import AlreadyExists
 from google.api_core.gapic_v1.method import DEFAULT, _MethodDefault
-from google.api_core.retry import Retry
 from google.cloud.orchestration.airflow.service_v1 import ImageVersion
 from google.cloud.orchestration.airflow.service_v1.types import Environment
-from google.protobuf.field_mask_pb2 import FieldMask
 
-from airflow import AirflowException
-from airflow.models import BaseOperator
+from airflow.configuration import conf
+from airflow.exceptions import AirflowException
 from airflow.providers.google.cloud.hooks.cloud_composer import CloudComposerHook
 from airflow.providers.google.cloud.links.base import BaseGoogleLink
+from airflow.providers.google.cloud.operators.cloud_base import GoogleCloudBaseOperator
 from airflow.providers.google.cloud.triggers.cloud_composer import CloudComposerExecutionTrigger
 from airflow.providers.google.common.consts import GOOGLE_DEFAULT_DEFERRABLE_METHOD_NAME
 
 if TYPE_CHECKING:
+    from google.api_core.retry import Retry
+    from google.protobuf.field_mask_pb2 import FieldMask
+
     from airflow.utils.context import Context
 
 CLOUD_COMPOSER_BASE_LINK = "https://console.cloud.google.com/composer/environments"
 CLOUD_COMPOSER_DETAILS_LINK = (
     CLOUD_COMPOSER_BASE_LINK + "/detail/{region}/{environment_id}/monitoring?project={project_id}"
 )
-CLOUD_COMPOSER_ENVIRONMENTS_LINK = CLOUD_COMPOSER_BASE_LINK + '?project={project_id}'
+CLOUD_COMPOSER_ENVIRONMENTS_LINK = CLOUD_COMPOSER_BASE_LINK + "?project={project_id}"
 
 
 class CloudComposerEnvironmentLink(BaseGoogleLink):
-    """Helper class for constructing Cloud Composer Environment Link"""
+    """Helper class for constructing Cloud Composer Environment Link."""
 
     name = "Cloud Composer Environment"
     key = "composer_conf"
@@ -50,12 +54,12 @@ class CloudComposerEnvironmentLink(BaseGoogleLink):
 
     @staticmethod
     def persist(
-        operator_instance: Union[
-            "CloudComposerCreateEnvironmentOperator",
-            "CloudComposerUpdateEnvironmentOperator",
-            "CloudComposerGetEnvironmentOperator",
-        ],
-        context: "Context",
+        operator_instance: (
+            CloudComposerCreateEnvironmentOperator
+            | CloudComposerUpdateEnvironmentOperator
+            | CloudComposerGetEnvironmentOperator
+        ),
+        context: Context,
     ) -> None:
         operator_instance.xcom_push(
             context,
@@ -69,14 +73,14 @@ class CloudComposerEnvironmentLink(BaseGoogleLink):
 
 
 class CloudComposerEnvironmentsLink(BaseGoogleLink):
-    """Helper class for constructing Cloud Composer Environment Link"""
+    """Helper class for constructing Cloud Composer Environment Link."""
 
     name = "Cloud Composer Environment List"
     key = "composer_conf"
     format_str = CLOUD_COMPOSER_ENVIRONMENTS_LINK
 
     @staticmethod
-    def persist(operator_instance: "CloudComposerListEnvironmentsOperator", context: "Context") -> None:
+    def persist(operator_instance: CloudComposerListEnvironmentsOperator, context: Context) -> None:
         operator_instance.xcom_push(
             context,
             key=CloudComposerEnvironmentsLink.key,
@@ -86,7 +90,7 @@ class CloudComposerEnvironmentsLink(BaseGoogleLink):
         )
 
 
-class CloudComposerCreateEnvironmentOperator(BaseOperator):
+class CloudComposerCreateEnvironmentOperator(GoogleCloudBaseOperator):
     """
     Create a new environment.
 
@@ -103,23 +107,20 @@ class CloudComposerCreateEnvironmentOperator(BaseOperator):
         If set as a sequence, the identities from the list must grant
         Service Account Token Creator IAM role to the directly preceding identity, with first
         account from the list granting this role to the originating account (templated).
-    :param delegate_to: The account to impersonate using domain-wide delegation of authority,
-        if any. For this to work, the service account making the request must have
-        domain-wide delegation enabled.
     :param retry: Designation of what errors, if any, should be retried.
     :param timeout: The timeout for this request.
     :param metadata: Strings which should be sent along with the request as metadata.
     :param deferrable: Run operator in the deferrable mode
     :param pooling_period_seconds: Optional: Control the rate of the poll for the result of deferrable run.
-        By default the trigger will poll every 30 seconds.
+        By default, the trigger will poll every 30 seconds.
     """
 
     template_fields = (
-        'project_id',
-        'region',
-        'environment_id',
-        'environment',
-        'impersonation_chain',
+        "project_id",
+        "region",
+        "environment_id",
+        "environment",
+        "impersonation_chain",
     )
 
     operator_extra_links = (CloudComposerEnvironmentLink(),)
@@ -130,14 +131,13 @@ class CloudComposerCreateEnvironmentOperator(BaseOperator):
         project_id: str,
         region: str,
         environment_id: str,
-        environment: Union[Environment, Dict],
+        environment: Environment | dict,
         gcp_conn_id: str = "google_cloud_default",
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
-        delegate_to: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
-        deferrable: bool = False,
+        impersonation_chain: str | Sequence[str] | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
+        deferrable: bool = conf.getboolean("operators", "default_deferrable", fallback=False),
         pooling_period_seconds: int = 30,
         **kwargs,
     ) -> None:
@@ -151,15 +151,13 @@ class CloudComposerCreateEnvironmentOperator(BaseOperator):
         self.metadata = metadata
         self.gcp_conn_id = gcp_conn_id
         self.impersonation_chain = impersonation_chain
-        self.delegate_to = delegate_to
         self.deferrable = deferrable
         self.pooling_period_seconds = pooling_period_seconds
 
-    def execute(self, context: 'Context'):
+    def execute(self, context: Context):
         hook = CloudComposerHook(
             gcp_conn_id=self.gcp_conn_id,
             impersonation_chain=self.impersonation_chain,
-            delegate_to=self.delegate_to,
         )
 
         name = hook.get_environment_name(self.project_id, self.region, self.environment_id)
@@ -178,6 +176,8 @@ class CloudComposerCreateEnvironmentOperator(BaseOperator):
                 timeout=self.timeout,
                 metadata=self.metadata,
             )
+            context["ti"].xcom_push(key="operation_id", value=result.operation.name)
+
             if not self.deferrable:
                 environment = hook.wait_for_operation(timeout=self.timeout, operation=result)
                 return Environment.to_dict(environment)
@@ -189,7 +189,6 @@ class CloudComposerCreateEnvironmentOperator(BaseOperator):
                         operation_name=result.operation.name,
                         gcp_conn_id=self.gcp_conn_id,
                         impersonation_chain=self.impersonation_chain,
-                        delegate_to=self.delegate_to,
                         pooling_period_seconds=self.pooling_period_seconds,
                     ),
                     method_name=GOOGLE_DEFAULT_DEFERRABLE_METHOD_NAME,
@@ -205,12 +204,11 @@ class CloudComposerCreateEnvironmentOperator(BaseOperator):
             )
             return Environment.to_dict(environment)
 
-    def execute_complete(self, context: "Context", event: dict):
+    def execute_complete(self, context: Context, event: dict):
         if event["operation_done"]:
             hook = CloudComposerHook(
                 gcp_conn_id=self.gcp_conn_id,
                 impersonation_chain=self.impersonation_chain,
-                delegate_to=self.delegate_to,
             )
 
             env = hook.get_environment(
@@ -226,7 +224,7 @@ class CloudComposerCreateEnvironmentOperator(BaseOperator):
             raise AirflowException(f"Unexpected error in the operation: {event['operation_name']}")
 
 
-class CloudComposerDeleteEnvironmentOperator(BaseOperator):
+class CloudComposerDeleteEnvironmentOperator(GoogleCloudBaseOperator):
     """
     Delete an environment.
 
@@ -245,19 +243,16 @@ class CloudComposerDeleteEnvironmentOperator(BaseOperator):
         If set as a sequence, the identities from the list must grant
         Service Account Token Creator IAM role to the directly preceding identity, with first
         account from the list granting this role to the originating account (templated).
-    :param delegate_to: The account to impersonate using domain-wide delegation of authority,
-        if any. For this to work, the service account making the request must have
-        domain-wide delegation enabled.
     :param deferrable: Run operator in the deferrable mode
     :param pooling_period_seconds: Optional: Control the rate of the poll for the result of deferrable run.
-        By default the trigger will poll every 30 seconds.
+        By default, the trigger will poll every 30 seconds.
     """
 
     template_fields = (
-        'project_id',
-        'region',
-        'environment_id',
-        'impersonation_chain',
+        "project_id",
+        "region",
+        "environment_id",
+        "impersonation_chain",
     )
 
     def __init__(
@@ -266,13 +261,12 @@ class CloudComposerDeleteEnvironmentOperator(BaseOperator):
         project_id: str,
         region: str,
         environment_id: str,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
         gcp_conn_id: str = "google_cloud_default",
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
-        delegate_to: Optional[str] = None,
-        deferrable: bool = False,
+        impersonation_chain: str | Sequence[str] | None = None,
+        deferrable: bool = conf.getboolean("operators", "default_deferrable", fallback=False),
         pooling_period_seconds: int = 30,
         **kwargs,
     ) -> None:
@@ -285,15 +279,13 @@ class CloudComposerDeleteEnvironmentOperator(BaseOperator):
         self.metadata = metadata
         self.gcp_conn_id = gcp_conn_id
         self.impersonation_chain = impersonation_chain
-        self.delegate_to = delegate_to
         self.deferrable = deferrable
         self.pooling_period_seconds = pooling_period_seconds
 
-    def execute(self, context: 'Context'):
+    def execute(self, context: Context):
         hook = CloudComposerHook(
             gcp_conn_id=self.gcp_conn_id,
             impersonation_chain=self.impersonation_chain,
-            delegate_to=self.delegate_to,
         )
         result = hook.delete_environment(
             project_id=self.project_id,
@@ -313,17 +305,16 @@ class CloudComposerDeleteEnvironmentOperator(BaseOperator):
                     operation_name=result.operation.name,
                     gcp_conn_id=self.gcp_conn_id,
                     impersonation_chain=self.impersonation_chain,
-                    delegate_to=self.delegate_to,
                     pooling_period_seconds=self.pooling_period_seconds,
                 ),
                 method_name=GOOGLE_DEFAULT_DEFERRABLE_METHOD_NAME,
             )
 
-    def execute_complete(self, context: "Context", event: dict):
+    def execute_complete(self, context: Context, event: dict):
         pass
 
 
-class CloudComposerGetEnvironmentOperator(BaseOperator):
+class CloudComposerGetEnvironmentOperator(GoogleCloudBaseOperator):
     """
     Get an existing environment.
 
@@ -342,16 +333,13 @@ class CloudComposerGetEnvironmentOperator(BaseOperator):
         If set as a sequence, the identities from the list must grant
         Service Account Token Creator IAM role to the directly preceding identity, with first
         account from the list granting this role to the originating account (templated).
-    :param delegate_to: The account to impersonate using domain-wide delegation of authority,
-        if any. For this to work, the service account making the request must have
-        domain-wide delegation enabled.
     """
 
     template_fields = (
-        'project_id',
-        'region',
-        'environment_id',
-        'impersonation_chain',
+        "project_id",
+        "region",
+        "environment_id",
+        "impersonation_chain",
     )
 
     operator_extra_links = (CloudComposerEnvironmentLink(),)
@@ -362,12 +350,11 @@ class CloudComposerGetEnvironmentOperator(BaseOperator):
         project_id: str,
         region: str,
         environment_id: str,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
         gcp_conn_id: str = "google_cloud_default",
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
-        delegate_to: Optional[str] = None,
+        impersonation_chain: str | Sequence[str] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -379,13 +366,11 @@ class CloudComposerGetEnvironmentOperator(BaseOperator):
         self.metadata = metadata
         self.gcp_conn_id = gcp_conn_id
         self.impersonation_chain = impersonation_chain
-        self.delegate_to = delegate_to
 
-    def execute(self, context: 'Context'):
+    def execute(self, context: Context):
         hook = CloudComposerHook(
             gcp_conn_id=self.gcp_conn_id,
             impersonation_chain=self.impersonation_chain,
-            delegate_to=self.delegate_to,
         )
 
         result = hook.get_environment(
@@ -401,7 +386,7 @@ class CloudComposerGetEnvironmentOperator(BaseOperator):
         return Environment.to_dict(result)
 
 
-class CloudComposerListEnvironmentsOperator(BaseOperator):
+class CloudComposerListEnvironmentsOperator(GoogleCloudBaseOperator):
     """
     List environments.
 
@@ -422,15 +407,12 @@ class CloudComposerListEnvironmentsOperator(BaseOperator):
         If set as a sequence, the identities from the list must grant
         Service Account Token Creator IAM role to the directly preceding identity, with first
         account from the list granting this role to the originating account (templated).
-    :param delegate_to: The account to impersonate using domain-wide delegation of authority,
-        if any. For this to work, the service account making the request must have
-        domain-wide delegation enabled.
     """
 
     template_fields = (
-        'project_id',
-        'region',
-        'impersonation_chain',
+        "project_id",
+        "region",
+        "impersonation_chain",
     )
 
     operator_extra_links = (CloudComposerEnvironmentsLink(),)
@@ -440,14 +422,13 @@ class CloudComposerListEnvironmentsOperator(BaseOperator):
         *,
         project_id: str,
         region: str,
-        page_size: Optional[int] = None,
-        page_token: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        page_size: int | None = None,
+        page_token: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
         gcp_conn_id: str = "google_cloud_default",
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
-        delegate_to: Optional[str] = None,
+        impersonation_chain: str | Sequence[str] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -460,13 +441,11 @@ class CloudComposerListEnvironmentsOperator(BaseOperator):
         self.metadata = metadata
         self.gcp_conn_id = gcp_conn_id
         self.impersonation_chain = impersonation_chain
-        self.delegate_to = delegate_to
 
-    def execute(self, context: 'Context'):
+    def execute(self, context: Context):
         hook = CloudComposerHook(
             gcp_conn_id=self.gcp_conn_id,
             impersonation_chain=self.impersonation_chain,
-            delegate_to=self.delegate_to,
         )
         CloudComposerEnvironmentsLink.persist(operator_instance=self, context=context)
         result = hook.list_environments(
@@ -481,7 +460,7 @@ class CloudComposerListEnvironmentsOperator(BaseOperator):
         return [Environment.to_dict(env) for env in result]
 
 
-class CloudComposerUpdateEnvironmentOperator(BaseOperator):
+class CloudComposerUpdateEnvironmentOperator(GoogleCloudBaseOperator):
     r"""
     Update an environment.
 
@@ -505,19 +484,16 @@ class CloudComposerUpdateEnvironmentOperator(BaseOperator):
         If set as a sequence, the identities from the list must grant
         Service Account Token Creator IAM role to the directly preceding identity, with first
         account from the list granting this role to the originating account (templated).
-    :param delegate_to: The account to impersonate using domain-wide delegation of authority,
-        if any. For this to work, the service account making the request must have
-        domain-wide delegation enabled.
     :param deferrable: Run operator in the deferrable mode
     :param pooling_period_seconds: Optional: Control the rate of the poll for the result of deferrable run.
-        By default the trigger will poll every 30 seconds.
+        By default, the trigger will poll every 30 seconds.
     """
 
     template_fields = (
-        'project_id',
-        'region',
-        'environment_id',
-        'impersonation_chain',
+        "project_id",
+        "region",
+        "environment_id",
+        "impersonation_chain",
     )
 
     operator_extra_links = (CloudComposerEnvironmentLink(),)
@@ -528,15 +504,14 @@ class CloudComposerUpdateEnvironmentOperator(BaseOperator):
         project_id: str,
         region: str,
         environment_id: str,
-        environment: Union[Dict, Environment],
-        update_mask: Union[Dict, FieldMask],
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        environment: dict | Environment,
+        update_mask: dict | FieldMask,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
         gcp_conn_id: str = "google_cloud_default",
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
-        delegate_to: Optional[str] = None,
-        deferrable: bool = False,
+        impersonation_chain: str | Sequence[str] | None = None,
+        deferrable: bool = conf.getboolean("operators", "default_deferrable", fallback=False),
         pooling_period_seconds: int = 30,
         **kwargs,
     ) -> None:
@@ -551,15 +526,13 @@ class CloudComposerUpdateEnvironmentOperator(BaseOperator):
         self.metadata = metadata
         self.gcp_conn_id = gcp_conn_id
         self.impersonation_chain = impersonation_chain
-        self.delegate_to = delegate_to
         self.deferrable = deferrable
         self.pooling_period_seconds = pooling_period_seconds
 
-    def execute(self, context: 'Context'):
+    def execute(self, context: Context):
         hook = CloudComposerHook(
             gcp_conn_id=self.gcp_conn_id,
             impersonation_chain=self.impersonation_chain,
-            delegate_to=self.delegate_to,
         )
 
         result = hook.update_environment(
@@ -585,18 +558,16 @@ class CloudComposerUpdateEnvironmentOperator(BaseOperator):
                     operation_name=result.operation.name,
                     gcp_conn_id=self.gcp_conn_id,
                     impersonation_chain=self.impersonation_chain,
-                    delegate_to=self.delegate_to,
                     pooling_period_seconds=self.pooling_period_seconds,
                 ),
                 method_name=GOOGLE_DEFAULT_DEFERRABLE_METHOD_NAME,
             )
 
-    def execute_complete(self, context: "Context", event: dict):
+    def execute_complete(self, context: Context, event: dict):
         if event["operation_done"]:
             hook = CloudComposerHook(
                 gcp_conn_id=self.gcp_conn_id,
                 impersonation_chain=self.impersonation_chain,
-                delegate_to=self.delegate_to,
             )
 
             env = hook.get_environment(
@@ -612,7 +583,7 @@ class CloudComposerUpdateEnvironmentOperator(BaseOperator):
             raise AirflowException(f"Unexpected error in the operation: {event['operation_name']}")
 
 
-class CloudComposerListImageVersionsOperator(BaseOperator):
+class CloudComposerListImageVersionsOperator(GoogleCloudBaseOperator):
     """
     List ImageVersions for provided location.
 
@@ -629,15 +600,12 @@ class CloudComposerListImageVersionsOperator(BaseOperator):
         If set as a sequence, the identities from the list must grant
         Service Account Token Creator IAM role to the directly preceding identity, with first
         account from the list granting this role to the originating account (templated).
-    :param delegate_to: The account to impersonate using domain-wide delegation of authority,
-        if any. For this to work, the service account making the request must have
-        domain-wide delegation enabled.
     """
 
     template_fields = (
-        'project_id',
-        'region',
-        'impersonation_chain',
+        "project_id",
+        "region",
+        "impersonation_chain",
     )
 
     def __init__(
@@ -645,15 +613,14 @@ class CloudComposerListImageVersionsOperator(BaseOperator):
         *,
         project_id: str,
         region: str,
-        page_size: Optional[int] = None,
-        page_token: Optional[str] = None,
+        page_size: int | None = None,
+        page_token: str | None = None,
         include_past_releases: bool = False,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
         gcp_conn_id: str = "google_cloud_default",
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
-        delegate_to: Optional[str] = None,
+        impersonation_chain: str | Sequence[str] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -667,13 +634,11 @@ class CloudComposerListImageVersionsOperator(BaseOperator):
         self.metadata = metadata
         self.gcp_conn_id = gcp_conn_id
         self.impersonation_chain = impersonation_chain
-        self.delegate_to = delegate_to
 
-    def execute(self, context: 'Context'):
+    def execute(self, context: Context):
         hook = CloudComposerHook(
             gcp_conn_id=self.gcp_conn_id,
             impersonation_chain=self.impersonation_chain,
-            delegate_to=self.delegate_to,
         )
         result = hook.list_image_versions(
             project_id=self.project_id,

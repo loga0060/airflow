@@ -14,39 +14,44 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
+
 import re
-from typing import Dict, Sequence, Tuple, Union
-from unittest import TestCase, mock
+from typing import TYPE_CHECKING, Sequence
+from unittest import mock
 
 import pytest
-from google.api_core.gapic_v1.method import _MethodDefault
-from google.api_core.retry import Retry
 
-from airflow import AirflowException
+from airflow.exceptions import AirflowException
 from airflow.providers.google.cloud.hooks.os_login import OSLoginHook
 from tests.providers.google.cloud.utils.base_gcp_mock import (
     mock_base_gcp_hook_default_project_id,
     mock_base_gcp_hook_no_default_project_id,
 )
 
+if TYPE_CHECKING:
+    from google.api_core.gapic_v1.method import _MethodDefault
+    from google.api_core.retry import Retry
+
 TEST_GCP_CONN_ID: str = "test-gcp-conn-id"
-TEST_DELEGATE_TO: str = "test-delegate-to"
 TEST_PROJECT_ID: str = "test-project-id"
 TEST_PROJECT_ID_2: str = "test-project-id-2"
 
 TEST_USER: str = "test-user"
 TEST_CREDENTIALS = mock.MagicMock()
-TEST_BODY: Dict = mock.MagicMock()
-TEST_RETRY: Union[Retry, _MethodDefault] = mock.MagicMock()
+TEST_BODY: dict = mock.MagicMock()
+TEST_RETRY: Retry | _MethodDefault = mock.MagicMock()
 TEST_TIMEOUT: float = 4
-TEST_METADATA: Sequence[Tuple[str, str]] = ()
+TEST_METADATA: Sequence[tuple[str, str]] = ()
 TEST_PARENT: str = "users/test-user"
 
 
-class TestOSLoginHook(TestCase):
-    def setUp(
-        self,
-    ) -> None:
+class TestOSLoginHook:
+    def test_delegate_to_runtime_error(self):
+        with pytest.raises(RuntimeError):
+            OSLoginHook(gcp_conn_id="GCP_CONN_ID", delegate_to="delegate_to")
+
+    def setup_method(self):
         with mock.patch(
             "airflow.providers.google.cloud.hooks.os_login.OSLoginHook.__init__",
             new=mock_base_gcp_hook_default_project_id,
@@ -54,7 +59,7 @@ class TestOSLoginHook(TestCase):
             self.hook = OSLoginHook(gcp_conn_id="test")
 
     @mock.patch(
-        "airflow.providers.google.common.hooks.base_google.GoogleBaseHook._get_credentials_and_project_id",
+        "airflow.providers.google.common.hooks.base_google.GoogleBaseHook.get_credentials_and_project_id",
         return_value=(TEST_CREDENTIALS, None),
     )
     @mock.patch("airflow.providers.google.cloud.hooks.os_login.OSLoginHook.get_conn")
@@ -79,10 +84,8 @@ class TestOSLoginHook(TestCase):
         )
 
 
-class TestOSLoginHookWithDefaultProjectIdHook(TestCase):
-    def setUp(
-        self,
-    ) -> None:
+class TestOSLoginHookWithDefaultProjectIdHook:
+    def setup_method(self):
         with mock.patch(
             "airflow.providers.google.cloud.hooks.os_login.OSLoginHook.__init__",
             new=mock_base_gcp_hook_default_project_id,
@@ -90,7 +93,7 @@ class TestOSLoginHookWithDefaultProjectIdHook(TestCase):
             self.hook = OSLoginHook(gcp_conn_id="test")
 
     @mock.patch(
-        "airflow.providers.google.common.hooks.base_google.GoogleBaseHook._get_credentials_and_project_id",
+        "airflow.providers.google.common.hooks.base_google.GoogleBaseHook.get_credentials_and_project_id",
         return_value=(TEST_CREDENTIALS, TEST_PROJECT_ID_2),
     )
     @mock.patch("airflow.providers.google.cloud.hooks.os_login.OSLoginHook.get_conn")
@@ -115,10 +118,8 @@ class TestOSLoginHookWithDefaultProjectIdHook(TestCase):
         )
 
 
-class TestOSLoginHookWithoutDefaultProjectIdHook(TestCase):
-    def setUp(
-        self,
-    ) -> None:
+class TestOSLoginHookWithoutDefaultProjectIdHook:
+    def setup_method(self):
         with mock.patch(
             "airflow.providers.google.cloud.hooks.os_login.OSLoginHook.__init__",
             new=mock_base_gcp_hook_no_default_project_id,
@@ -126,7 +127,7 @@ class TestOSLoginHookWithoutDefaultProjectIdHook(TestCase):
             self.hook = OSLoginHook(gcp_conn_id="test")
 
     @mock.patch(
-        "airflow.providers.google.common.hooks.base_google.GoogleBaseHook._get_credentials_and_project_id",
+        "airflow.providers.google.common.hooks.base_google.GoogleBaseHook.get_credentials_and_project_id",
         return_value=(TEST_CREDENTIALS, TEST_PROJECT_ID_2),
     )
     @mock.patch("airflow.providers.google.cloud.hooks.os_login.OSLoginHook.get_conn")
@@ -153,10 +154,8 @@ TEST_MESSAGE = re.escape(
 )
 
 
-class TestOSLoginHookMissingProjectIdHook(TestCase):
-    def setUp(
-        self,
-    ) -> None:
+class TestOSLoginHookMissingProjectIdHook:
+    def setup_method(self):
         with mock.patch(
             "airflow.providers.google.cloud.hooks.os_login.OSLoginHook.__init__",
             new=mock_base_gcp_hook_no_default_project_id,
@@ -164,7 +163,7 @@ class TestOSLoginHookMissingProjectIdHook(TestCase):
             self.hook = OSLoginHook(gcp_conn_id="test")
 
     @mock.patch(
-        "airflow.providers.google.common.hooks.base_google.GoogleBaseHook._get_credentials_and_project_id",
+        "airflow.providers.google.common.hooks.base_google.GoogleBaseHook.get_credentials_and_project_id",
         return_value=(TEST_CREDENTIALS, None),
     )
     @mock.patch("airflow.providers.google.cloud.hooks.os_login.OSLoginHook.get_conn")

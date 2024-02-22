@@ -15,6 +15,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
 
 from flask import Blueprint
 from flask_appbuilder import BaseView as AppBuilderBaseView, expose
@@ -31,6 +32,7 @@ from airflow.sensors.base import BaseSensorOperator
 from airflow.ti_deps.deps.base_ti_dep import BaseTIDep
 from airflow.timetables.interval import CronDataIntervalTimetable
 from tests.listeners import empty_listener
+from tests.listeners.class_listener import ClassBasedListener
 from tests.test_utils.mock_operators import (
     AirflowLink,
     AirflowLink2,
@@ -96,9 +98,9 @@ appbuilder_mitem_toplevel = {
 bp = Blueprint(
     "test_plugin",
     __name__,
-    template_folder='templates',  # registers airflow/plugins/templates as a Jinja template folder
-    static_folder='static',
-    static_url_path='/static/test_plugin',
+    template_folder="templates",  # registers airflow/plugins/templates as a Jinja template folder
+    static_folder="static",
+    static_url_path="/static/test_plugin",
 )
 
 
@@ -128,24 +130,24 @@ class AirflowTestPlugin(AirflowPlugin):
     ]
     operator_extra_links = [GoogleLink(), AirflowLink2(), CustomOpLink(), CustomBaseIndexOpLink(1)]
     timetables = [CustomCronDataIntervalTimetable]
-    listeners = [empty_listener]
+    listeners = [empty_listener, ClassBasedListener()]
     ti_deps = [CustomTestTriggerRule()]
 
 
 class MockPluginA(AirflowPlugin):
-    name = 'plugin-a'
+    name = "plugin-a"
 
 
 class MockPluginB(AirflowPlugin):
-    name = 'plugin-b'
+    name = "plugin-b"
 
 
 class MockPluginC(AirflowPlugin):
-    name = 'plugin-c'
+    name = "plugin-c"
 
 
 class AirflowTestOnLoadPlugin(AirflowPlugin):
-    name = 'preload'
+    name = "preload"
 
     def on_load(self, *args, **kwargs):
-        self.name = 'postload'
+        self.name = "postload"

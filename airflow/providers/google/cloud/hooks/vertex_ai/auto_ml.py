@@ -15,42 +15,14 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-#
-"""
-This module contains a Google Cloud Vertex AI hook.
-
-.. spelling::
-
-    aiplatform
-    au
-    codepoints
-    milli
-    mae
-    quantile
-    quantiles
-    Quantiles
-    rmse
-    rmsle
-    rmspe
-    wape
-    prc
-    roc
-    Jetson
-    forecasted
-    Struct
-    sentimentMax
-    TrainingPipeline
-    targetColumn
-    optimizationObjective
-"""
+"""This module contains a Google Cloud Vertex AI hook."""
+from __future__ import annotations
 
 import warnings
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, Sequence
 
 from google.api_core.client_options import ClientOptions
 from google.api_core.gapic_v1.method import DEFAULT, _MethodDefault
-from google.api_core.operation import Operation
-from google.api_core.retry import Retry
 from google.cloud.aiplatform import (
     AutoMLForecastingTrainingJob,
     AutoMLImageTrainingJob,
@@ -61,11 +33,15 @@ from google.cloud.aiplatform import (
     models,
 )
 from google.cloud.aiplatform_v1 import JobServiceClient, PipelineServiceClient
-from google.cloud.aiplatform_v1.services.pipeline_service.pagers import ListTrainingPipelinesPager
-from google.cloud.aiplatform_v1.types import TrainingPipeline
 
-from airflow import AirflowException
+from airflow.exceptions import AirflowException, AirflowProviderDeprecationWarning
 from airflow.providers.google.common.hooks.base_google import GoogleBaseHook
+
+if TYPE_CHECKING:
+    from google.api_core.operation import Operation
+    from google.api_core.retry import Retry
+    from google.cloud.aiplatform_v1.services.pipeline_service.pagers import ListTrainingPipelinesPager
+    from google.cloud.aiplatform_v1.types import TrainingPipeline
 
 
 class AutoMLHook(GoogleBaseHook):
@@ -74,68 +50,70 @@ class AutoMLHook(GoogleBaseHook):
     def __init__(
         self,
         gcp_conn_id: str = "google_cloud_default",
-        delegate_to: Optional[str] = None,
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
+        impersonation_chain: str | Sequence[str] | None = None,
+        **kwargs,
     ) -> None:
+        if kwargs.get("delegate_to") is not None:
+            raise RuntimeError(
+                "The `delegate_to` parameter has been deprecated before and finally removed in this version"
+                " of Google Provider. You MUST convert it to `impersonate_chain`"
+            )
         super().__init__(
             gcp_conn_id=gcp_conn_id,
-            delegate_to=delegate_to,
             impersonation_chain=impersonation_chain,
         )
-        self._job: Optional[
-            Union[
-                AutoMLForecastingTrainingJob,
-                AutoMLImageTrainingJob,
-                AutoMLTabularTrainingJob,
-                AutoMLTextTrainingJob,
-                AutoMLVideoTrainingJob,
-            ]
-        ] = None
+        self._job: None | (
+            AutoMLForecastingTrainingJob
+            | AutoMLImageTrainingJob
+            | AutoMLTabularTrainingJob
+            | AutoMLTextTrainingJob
+            | AutoMLVideoTrainingJob
+        ) = None
 
     def get_pipeline_service_client(
         self,
-        region: Optional[str] = None,
+        region: str | None = None,
     ) -> PipelineServiceClient:
-        """Returns PipelineServiceClient."""
-        if region and region != 'global':
-            client_options = ClientOptions(api_endpoint=f'{region}-aiplatform.googleapis.com:443')
+        """Return PipelineServiceClient."""
+        if region and region != "global":
+            client_options = ClientOptions(api_endpoint=f"{region}-aiplatform.googleapis.com:443")
         else:
             client_options = ClientOptions()
 
         return PipelineServiceClient(
-            credentials=self._get_credentials(), client_info=self.client_info, client_options=client_options
+            credentials=self.get_credentials(), client_info=self.client_info, client_options=client_options
         )
 
     def get_job_service_client(
         self,
-        region: Optional[str] = None,
+        region: str | None = None,
     ) -> JobServiceClient:
-        """Returns JobServiceClient"""
-        if region and region != 'global':
-            client_options = ClientOptions(api_endpoint=f'{region}-aiplatform.googleapis.com:443')
+        """Return JobServiceClient."""
+        if region and region != "global":
+            client_options = ClientOptions(api_endpoint=f"{region}-aiplatform.googleapis.com:443")
         else:
             client_options = ClientOptions()
 
         return JobServiceClient(
-            credentials=self._get_credentials(), client_info=self.client_info, client_options=client_options
+            credentials=self.get_credentials(), client_info=self.client_info, client_options=client_options
         )
 
     def get_auto_ml_tabular_training_job(
         self,
         display_name: str,
         optimization_prediction_type: str,
-        optimization_objective: Optional[str] = None,
-        column_specs: Optional[Dict[str, str]] = None,
-        column_transformations: Optional[List[Dict[str, Dict[str, str]]]] = None,
-        optimization_objective_recall_value: Optional[float] = None,
-        optimization_objective_precision_value: Optional[float] = None,
-        project: Optional[str] = None,
-        location: Optional[str] = None,
-        labels: Optional[Dict[str, str]] = None,
-        training_encryption_spec_key_name: Optional[str] = None,
-        model_encryption_spec_key_name: Optional[str] = None,
+        optimization_objective: str | None = None,
+        column_specs: dict[str, str] | None = None,
+        column_transformations: list[dict[str, dict[str, str]]] | None = None,
+        optimization_objective_recall_value: float | None = None,
+        optimization_objective_precision_value: float | None = None,
+        project: str | None = None,
+        location: str | None = None,
+        labels: dict[str, str] | None = None,
+        training_encryption_spec_key_name: str | None = None,
+        model_encryption_spec_key_name: str | None = None,
     ) -> AutoMLTabularTrainingJob:
-        """Returns AutoMLTabularTrainingJob object"""
+        """Return AutoMLTabularTrainingJob object."""
         return AutoMLTabularTrainingJob(
             display_name=display_name,
             optimization_prediction_type=optimization_prediction_type,
@@ -146,7 +124,7 @@ class AutoMLHook(GoogleBaseHook):
             optimization_objective_precision_value=optimization_objective_precision_value,
             project=project,
             location=location,
-            credentials=self._get_credentials(),
+            credentials=self.get_credentials(),
             labels=labels,
             training_encryption_spec_key_name=training_encryption_spec_key_name,
             model_encryption_spec_key_name=model_encryption_spec_key_name,
@@ -155,16 +133,16 @@ class AutoMLHook(GoogleBaseHook):
     def get_auto_ml_forecasting_training_job(
         self,
         display_name: str,
-        optimization_objective: Optional[str] = None,
-        column_specs: Optional[Dict[str, str]] = None,
-        column_transformations: Optional[List[Dict[str, Dict[str, str]]]] = None,
-        project: Optional[str] = None,
-        location: Optional[str] = None,
-        labels: Optional[Dict[str, str]] = None,
-        training_encryption_spec_key_name: Optional[str] = None,
-        model_encryption_spec_key_name: Optional[str] = None,
+        optimization_objective: str | None = None,
+        column_specs: dict[str, str] | None = None,
+        column_transformations: list[dict[str, dict[str, str]]] | None = None,
+        project: str | None = None,
+        location: str | None = None,
+        labels: dict[str, str] | None = None,
+        training_encryption_spec_key_name: str | None = None,
+        model_encryption_spec_key_name: str | None = None,
     ) -> AutoMLForecastingTrainingJob:
-        """Returns AutoMLForecastingTrainingJob object"""
+        """Return AutoMLForecastingTrainingJob object."""
         return AutoMLForecastingTrainingJob(
             display_name=display_name,
             optimization_objective=optimization_objective,
@@ -172,7 +150,7 @@ class AutoMLHook(GoogleBaseHook):
             column_transformations=column_transformations,
             project=project,
             location=location,
-            credentials=self._get_credentials(),
+            credentials=self.get_credentials(),
             labels=labels,
             training_encryption_spec_key_name=training_encryption_spec_key_name,
             model_encryption_spec_key_name=model_encryption_spec_key_name,
@@ -184,14 +162,14 @@ class AutoMLHook(GoogleBaseHook):
         prediction_type: str = "classification",
         multi_label: bool = False,
         model_type: str = "CLOUD",
-        base_model: Optional[models.Model] = None,
-        project: Optional[str] = None,
-        location: Optional[str] = None,
-        labels: Optional[Dict[str, str]] = None,
-        training_encryption_spec_key_name: Optional[str] = None,
-        model_encryption_spec_key_name: Optional[str] = None,
+        base_model: models.Model | None = None,
+        project: str | None = None,
+        location: str | None = None,
+        labels: dict[str, str] | None = None,
+        training_encryption_spec_key_name: str | None = None,
+        model_encryption_spec_key_name: str | None = None,
     ) -> AutoMLImageTrainingJob:
-        """Returns AutoMLImageTrainingJob object"""
+        """Return AutoMLImageTrainingJob object."""
         return AutoMLImageTrainingJob(
             display_name=display_name,
             prediction_type=prediction_type,
@@ -200,7 +178,7 @@ class AutoMLHook(GoogleBaseHook):
             base_model=base_model,
             project=project,
             location=location,
-            credentials=self._get_credentials(),
+            credentials=self.get_credentials(),
             labels=labels,
             training_encryption_spec_key_name=training_encryption_spec_key_name,
             model_encryption_spec_key_name=model_encryption_spec_key_name,
@@ -212,13 +190,13 @@ class AutoMLHook(GoogleBaseHook):
         prediction_type: str,
         multi_label: bool = False,
         sentiment_max: int = 10,
-        project: Optional[str] = None,
-        location: Optional[str] = None,
-        labels: Optional[Dict[str, str]] = None,
-        training_encryption_spec_key_name: Optional[str] = None,
-        model_encryption_spec_key_name: Optional[str] = None,
+        project: str | None = None,
+        location: str | None = None,
+        labels: dict[str, str] | None = None,
+        training_encryption_spec_key_name: str | None = None,
+        model_encryption_spec_key_name: str | None = None,
     ) -> AutoMLTextTrainingJob:
-        """Returns AutoMLTextTrainingJob object"""
+        """Return AutoMLTextTrainingJob object."""
         return AutoMLTextTrainingJob(
             display_name=display_name,
             prediction_type=prediction_type,
@@ -226,7 +204,7 @@ class AutoMLHook(GoogleBaseHook):
             sentiment_max=sentiment_max,
             project=project,
             location=location,
-            credentials=self._get_credentials(),
+            credentials=self.get_credentials(),
             labels=labels,
             training_encryption_spec_key_name=training_encryption_spec_key_name,
             model_encryption_spec_key_name=model_encryption_spec_key_name,
@@ -237,32 +215,37 @@ class AutoMLHook(GoogleBaseHook):
         display_name: str,
         prediction_type: str = "classification",
         model_type: str = "CLOUD",
-        project: Optional[str] = None,
-        location: Optional[str] = None,
-        labels: Optional[Dict[str, str]] = None,
-        training_encryption_spec_key_name: Optional[str] = None,
-        model_encryption_spec_key_name: Optional[str] = None,
+        project: str | None = None,
+        location: str | None = None,
+        labels: dict[str, str] | None = None,
+        training_encryption_spec_key_name: str | None = None,
+        model_encryption_spec_key_name: str | None = None,
     ) -> AutoMLVideoTrainingJob:
-        """Returns AutoMLVideoTrainingJob object"""
+        """Return AutoMLVideoTrainingJob object."""
         return AutoMLVideoTrainingJob(
             display_name=display_name,
             prediction_type=prediction_type,
             model_type=model_type,
             project=project,
             location=location,
-            credentials=self._get_credentials(),
+            credentials=self.get_credentials(),
             labels=labels,
             training_encryption_spec_key_name=training_encryption_spec_key_name,
             model_encryption_spec_key_name=model_encryption_spec_key_name,
         )
 
     @staticmethod
-    def extract_model_id(obj: Dict) -> str:
-        """Returns unique id of the Model."""
+    def extract_model_id(obj: dict) -> str:
+        """Return unique id of the Model."""
         return obj["name"].rpartition("/")[-1]
 
-    def wait_for_operation(self, operation: Operation, timeout: Optional[float] = None):
-        """Waits for long-lasting operation to complete."""
+    @staticmethod
+    def extract_training_id(resource_name: str) -> str:
+        """Return unique id of the Training pipeline."""
+        return resource_name.rpartition("/")[-1]
+
+    def wait_for_operation(self, operation: Operation, timeout: float | None = None):
+        """Wait for long-lasting operation to complete."""
         try:
             return operation.result(timeout=timeout)
         except Exception:
@@ -270,7 +253,7 @@ class AutoMLHook(GoogleBaseHook):
             raise AirflowException(error)
 
     def cancel_auto_ml_job(self) -> None:
-        """Cancel Auto ML Job for training pipeline"""
+        """Cancel Auto ML Job for training pipeline."""
         if self._job:
             self._job.cancel()
 
@@ -283,29 +266,33 @@ class AutoMLHook(GoogleBaseHook):
         dataset: datasets.TabularDataset,
         target_column: str,
         optimization_prediction_type: str,
-        optimization_objective: Optional[str] = None,
-        column_specs: Optional[Dict[str, str]] = None,
-        column_transformations: Optional[List[Dict[str, Dict[str, str]]]] = None,
-        optimization_objective_recall_value: Optional[float] = None,
-        optimization_objective_precision_value: Optional[float] = None,
-        labels: Optional[Dict[str, str]] = None,
-        training_encryption_spec_key_name: Optional[str] = None,
-        model_encryption_spec_key_name: Optional[str] = None,
-        training_fraction_split: Optional[float] = None,
-        validation_fraction_split: Optional[float] = None,
-        test_fraction_split: Optional[float] = None,
-        predefined_split_column_name: Optional[str] = None,
-        timestamp_split_column_name: Optional[str] = None,
-        weight_column: Optional[str] = None,
+        optimization_objective: str | None = None,
+        column_specs: dict[str, str] | None = None,
+        column_transformations: list[dict[str, dict[str, str]]] | None = None,
+        optimization_objective_recall_value: float | None = None,
+        optimization_objective_precision_value: float | None = None,
+        labels: dict[str, str] | None = None,
+        training_encryption_spec_key_name: str | None = None,
+        model_encryption_spec_key_name: str | None = None,
+        training_fraction_split: float | None = None,
+        validation_fraction_split: float | None = None,
+        test_fraction_split: float | None = None,
+        predefined_split_column_name: str | None = None,
+        timestamp_split_column_name: str | None = None,
+        weight_column: str | None = None,
         budget_milli_node_hours: int = 1000,
-        model_display_name: Optional[str] = None,
-        model_labels: Optional[Dict[str, str]] = None,
+        model_display_name: str | None = None,
+        model_labels: dict[str, str] | None = None,
         disable_early_stopping: bool = False,
         export_evaluated_data_items: bool = False,
-        export_evaluated_data_items_bigquery_destination_uri: Optional[str] = None,
+        export_evaluated_data_items_bigquery_destination_uri: str | None = None,
         export_evaluated_data_items_override_destination: bool = False,
         sync: bool = True,
-    ) -> models.Model:
+        parent_model: str | None = None,
+        is_default_version: bool | None = None,
+        model_version_aliases: list[str] | None = None,
+        model_version_description: str | None = None,
+    ) -> tuple[models.Model | None, str]:
         """
         Create an AutoML Tabular Training Job.
 
@@ -318,6 +305,24 @@ class AutoMLHook(GoogleBaseHook):
             [google.cloud.aiplatform.v1beta1.TrainingPipeline.training_task_definition]. For tabular
             Datasets, all their data is exported to training, to pick and choose from.
         :param target_column: Required. The name of the column values of which the Model is to predict.
+        :param parent_model: Optional. The resource name or model ID of an existing model.
+            The new model uploaded by this job will be a version of `parent_model`.
+            Only set this field when training a new version of an existing model.
+        :param is_default_version: Optional. When set to True, the newly uploaded model version will
+            automatically have alias "default" included. Subsequent uses of
+            the model produced by this job without a version specified will
+            use this "default" version.
+            When set to False, the "default" alias will not be moved.
+            Actions targeting the model version produced by this job will need
+            to specifically reference this version by ID or alias.
+            New model uploads, i.e. version 1, will always be "default" aliased.
+        :param model_version_aliases: Optional. User provided version aliases so that the model version
+            uploaded by this job can be referenced via alias instead of
+            auto-generated version ID. A default version alias will be created
+            for the first version of the model.
+            The format is [a-z][a-zA-Z0-9-]{0,126}[a-z0-9]
+        :param model_version_description: Optional. The description of the model version
+            being uploaded by this job.
         :param optimization_prediction_type: The type of prediction the Model is to produce.
             "classification" - Predict one out of multiple target values is picked for each row.
             "regression" - Predict a value based on its relation to other values. This type is available only
@@ -448,7 +453,7 @@ class AutoMLHook(GoogleBaseHook):
         if column_transformations:
             warnings.warn(
                 "Consider using column_specs as column_transformations will be deprecated eventually.",
-                DeprecationWarning,
+                AirflowProviderDeprecationWarning,
                 stacklevel=2,
             )
 
@@ -489,10 +494,20 @@ class AutoMLHook(GoogleBaseHook):
             ),
             export_evaluated_data_items_override_destination=export_evaluated_data_items_override_destination,
             sync=sync,
+            parent_model=parent_model,
+            is_default_version=is_default_version,
+            model_version_aliases=model_version_aliases,
+            model_version_description=model_version_description,
         )
-        model.wait()
-
-        return model
+        training_id = self.extract_training_id(self._job.resource_name)
+        if model:
+            model.wait()
+        else:
+            self.log.warning(
+                "Training did not produce a Managed Model returning None. Training Pipeline is not "
+                "configured to upload a Model."
+            )
+        return model, training_id
 
     @GoogleBaseHook.fallback_to_default_project_id
     def create_auto_ml_forecasting_training_job(
@@ -504,34 +519,38 @@ class AutoMLHook(GoogleBaseHook):
         target_column: str,
         time_column: str,
         time_series_identifier_column: str,
-        unavailable_at_forecast_columns: List[str],
-        available_at_forecast_columns: List[str],
+        unavailable_at_forecast_columns: list[str],
+        available_at_forecast_columns: list[str],
         forecast_horizon: int,
         data_granularity_unit: str,
         data_granularity_count: int,
-        optimization_objective: Optional[str] = None,
-        column_specs: Optional[Dict[str, str]] = None,
-        column_transformations: Optional[List[Dict[str, Dict[str, str]]]] = None,
-        labels: Optional[Dict[str, str]] = None,
-        training_encryption_spec_key_name: Optional[str] = None,
-        model_encryption_spec_key_name: Optional[str] = None,
-        training_fraction_split: Optional[float] = None,
-        validation_fraction_split: Optional[float] = None,
-        test_fraction_split: Optional[float] = None,
-        predefined_split_column_name: Optional[str] = None,
-        weight_column: Optional[str] = None,
-        time_series_attribute_columns: Optional[List[str]] = None,
-        context_window: Optional[int] = None,
+        optimization_objective: str | None = None,
+        column_specs: dict[str, str] | None = None,
+        column_transformations: list[dict[str, dict[str, str]]] | None = None,
+        labels: dict[str, str] | None = None,
+        training_encryption_spec_key_name: str | None = None,
+        model_encryption_spec_key_name: str | None = None,
+        training_fraction_split: float | None = None,
+        validation_fraction_split: float | None = None,
+        test_fraction_split: float | None = None,
+        predefined_split_column_name: str | None = None,
+        weight_column: str | None = None,
+        time_series_attribute_columns: list[str] | None = None,
+        context_window: int | None = None,
         export_evaluated_data_items: bool = False,
-        export_evaluated_data_items_bigquery_destination_uri: Optional[str] = None,
+        export_evaluated_data_items_bigquery_destination_uri: str | None = None,
         export_evaluated_data_items_override_destination: bool = False,
-        quantiles: Optional[List[float]] = None,
-        validation_options: Optional[str] = None,
+        quantiles: list[float] | None = None,
+        validation_options: str | None = None,
         budget_milli_node_hours: int = 1000,
-        model_display_name: Optional[str] = None,
-        model_labels: Optional[Dict[str, str]] = None,
+        model_display_name: str | None = None,
+        model_labels: dict[str, str] | None = None,
         sync: bool = True,
-    ) -> models.Model:
+        parent_model: str | None = None,
+        is_default_version: bool | None = None,
+        model_version_aliases: list[str] | None = None,
+        model_version_description: str | None = None,
+    ) -> tuple[models.Model | None, str]:
         """
         Create an AutoML Forecasting Training Job.
 
@@ -545,6 +564,24 @@ class AutoMLHook(GoogleBaseHook):
             Datasets, all their data is exported to training, to pick and choose from.
         :param target_column: Required. Name of the column that the Model is to predict values for.
         :param time_column: Required. Name of the column that identifies time order in the time series.
+        :param parent_model: Optional. The resource name or model ID of an existing model.
+            The new model uploaded by this job will be a version of `parent_model`.
+            Only set this field when training a new version of an existing model.
+        :param is_default_version: Optional. When set to True, the newly uploaded model version will
+            automatically have alias "default" included. Subsequent uses of
+            the model produced by this job without a version specified will
+            use this "default" version.
+            When set to False, the "default" alias will not be moved.
+            Actions targeting the model version produced by this job will need
+            to specifically reference this version by ID or alias.
+            New model uploads, i.e. version 1, will always be "default" aliased.
+        :param model_version_aliases: Optional. User provided version aliases so that the model version
+            uploaded by this job can be referenced via alias instead of
+            auto-generated version ID. A default version alias will be created
+            for the first version of the model.
+            The format is [a-z][a-zA-Z0-9-]{0,126}[a-z0-9]
+        :param model_version_description: Optional. The description of the model version
+            being uploaded by this job.
         :param time_series_identifier_column: Required. Name of the column that identifies the time series.
         :param unavailable_at_forecast_columns: Required. Column names of columns that are unavailable at
             forecast. Each column contains information for the given entity (identified by the
@@ -669,7 +706,7 @@ class AutoMLHook(GoogleBaseHook):
         if column_transformations:
             warnings.warn(
                 "Consider using column_specs as column_transformations will be deprecated eventually.",
-                DeprecationWarning,
+                AirflowProviderDeprecationWarning,
                 stacklevel=2,
             )
 
@@ -716,10 +753,20 @@ class AutoMLHook(GoogleBaseHook):
             model_display_name=model_display_name,
             model_labels=model_labels,
             sync=sync,
+            parent_model=parent_model,
+            is_default_version=is_default_version,
+            model_version_aliases=model_version_aliases,
+            model_version_description=model_version_description,
         )
-        model.wait()
-
-        return model
+        training_id = self.extract_training_id(self._job.resource_name)
+        if model:
+            model.wait()
+        else:
+            self.log.warning(
+                "Training did not produce a Managed Model returning None. Training Pipeline is not "
+                "configured to upload a Model."
+            )
+        return model, training_id
 
     @GoogleBaseHook.fallback_to_default_project_id
     def create_auto_ml_image_training_job(
@@ -731,22 +778,26 @@ class AutoMLHook(GoogleBaseHook):
         prediction_type: str = "classification",
         multi_label: bool = False,
         model_type: str = "CLOUD",
-        base_model: Optional[models.Model] = None,
-        labels: Optional[Dict[str, str]] = None,
-        training_encryption_spec_key_name: Optional[str] = None,
-        model_encryption_spec_key_name: Optional[str] = None,
-        training_fraction_split: Optional[float] = None,
-        validation_fraction_split: Optional[float] = None,
-        test_fraction_split: Optional[float] = None,
-        training_filter_split: Optional[str] = None,
-        validation_filter_split: Optional[str] = None,
-        test_filter_split: Optional[str] = None,
-        budget_milli_node_hours: Optional[int] = None,
-        model_display_name: Optional[str] = None,
-        model_labels: Optional[Dict[str, str]] = None,
+        base_model: models.Model | None = None,
+        labels: dict[str, str] | None = None,
+        training_encryption_spec_key_name: str | None = None,
+        model_encryption_spec_key_name: str | None = None,
+        training_fraction_split: float | None = None,
+        validation_fraction_split: float | None = None,
+        test_fraction_split: float | None = None,
+        training_filter_split: str | None = None,
+        validation_filter_split: str | None = None,
+        test_filter_split: str | None = None,
+        budget_milli_node_hours: int | None = None,
+        model_display_name: str | None = None,
+        model_labels: dict[str, str] | None = None,
         disable_early_stopping: bool = False,
         sync: bool = True,
-    ) -> models.Model:
+        parent_model: str | None = None,
+        is_default_version: bool | None = None,
+        model_version_aliases: list[str] | None = None,
+        model_version_description: str | None = None,
+    ) -> tuple[models.Model | None, str]:
         """
         Create an AutoML Image Training Job.
 
@@ -763,6 +814,24 @@ class AutoMLHook(GoogleBaseHook):
             "object_detection" - Predict a value based on its relation to other values. This type is
             available only to columns that contain semantically numeric values, i.e. integers or floating
             point number, even if stored as e.g. strings.
+        :param parent_model: Optional. The resource name or model ID of an existing model.
+            The new model uploaded by this job will be a version of `parent_model`.
+            Only set this field when training a new version of an existing model.
+        :param is_default_version: Optional. When set to True, the newly uploaded model version will
+            automatically have alias "default" included. Subsequent uses of
+            the model produced by this job without a version specified will
+            use this "default" version.
+            When set to False, the "default" alias will not be moved.
+            Actions targeting the model version produced by this job will need
+            to specifically reference this version by ID or alias.
+            New model uploads, i.e. version 1, will always be "default" aliased.
+        :param model_version_aliases: Optional. User provided version aliases so that the model version
+            uploaded by this job can be referenced via alias instead of
+            auto-generated version ID. A default version alias will be created
+            for the first version of the model.
+            The format is [a-z][a-zA-Z0-9-]{0,126}[a-z0-9]
+        :param model_version_description: Optional. The description of the model version
+            being uploaded by this job.
         :param multi_label: Required. Default is False. If false, a single-label (multi-class) Model will be
             trained (i.e. assuming that for each image just up to one annotation may be applicable). If true,
             a multi-label Model will be trained (i.e. assuming that for each image multiple annotations may
@@ -886,10 +955,20 @@ class AutoMLHook(GoogleBaseHook):
             model_labels=model_labels,
             disable_early_stopping=disable_early_stopping,
             sync=sync,
+            parent_model=parent_model,
+            is_default_version=is_default_version,
+            model_version_aliases=model_version_aliases,
+            model_version_description=model_version_description,
         )
-        model.wait()
-
-        return model
+        training_id = self.extract_training_id(self._job.resource_name)
+        if model:
+            model.wait()
+        else:
+            self.log.warning(
+                "Training did not produce a Managed Model returning None. AutoML Image Training "
+                "Pipeline is not configured to upload a Model."
+            )
+        return model, training_id
 
     @GoogleBaseHook.fallback_to_default_project_id
     def create_auto_ml_text_training_job(
@@ -901,19 +980,23 @@ class AutoMLHook(GoogleBaseHook):
         prediction_type: str,
         multi_label: bool = False,
         sentiment_max: int = 10,
-        labels: Optional[Dict[str, str]] = None,
-        training_encryption_spec_key_name: Optional[str] = None,
-        model_encryption_spec_key_name: Optional[str] = None,
-        training_fraction_split: Optional[float] = None,
-        validation_fraction_split: Optional[float] = None,
-        test_fraction_split: Optional[float] = None,
-        training_filter_split: Optional[str] = None,
-        validation_filter_split: Optional[str] = None,
-        test_filter_split: Optional[str] = None,
-        model_display_name: Optional[str] = None,
-        model_labels: Optional[Dict[str, str]] = None,
+        labels: dict[str, str] | None = None,
+        training_encryption_spec_key_name: str | None = None,
+        model_encryption_spec_key_name: str | None = None,
+        training_fraction_split: float | None = None,
+        validation_fraction_split: float | None = None,
+        test_fraction_split: float | None = None,
+        training_filter_split: str | None = None,
+        validation_filter_split: str | None = None,
+        test_filter_split: str | None = None,
+        model_display_name: str | None = None,
+        model_labels: dict[str, str] | None = None,
         sync: bool = True,
-    ) -> models.Model:
+        parent_model: str | None = None,
+        is_default_version: bool | None = None,
+        model_version_aliases: list[str] | None = None,
+        model_version_description: str | None = None,
+    ) -> tuple[models.Model | None, str]:
         """
         Create an AutoML Text Training Job.
 
@@ -933,6 +1016,24 @@ class AutoMLHook(GoogleBaseHook):
             "sentiment" - A sentiment analysis model inspects text data and identifies the prevailing
             emotional opinion within it, especially to determine a writer's attitude as positive, negative,
             or neutral.
+        :param parent_model: Optional. The resource name or model ID of an existing model.
+            The new model uploaded by this job will be a version of `parent_model`.
+            Only set this field when training a new version of an existing model.
+        :param is_default_version: Optional. When set to True, the newly uploaded model version will
+            automatically have alias "default" included. Subsequent uses of
+            the model produced by this job without a version specified will
+            use this "default" version.
+            When set to False, the "default" alias will not be moved.
+            Actions targeting the model version produced by this job will need
+            to specifically reference this version by ID or alias.
+            New model uploads, i.e. version 1, will always be "default" aliased.
+        :param model_version_aliases: Optional. User provided version aliases so that the model version
+            uploaded by this job can be referenced via alias instead of
+            auto-generated version ID. A default version alias will be created
+            for the first version of the model.
+            The format is [a-z][a-zA-Z0-9-]{0,126}[a-z0-9]
+        :param model_version_description: Optional. The description of the model version
+            being uploaded by this job.
         :param multi_label: Required and only applicable for text classification task. If false, a
             single-label (multi-class) Model will be trained (i.e. assuming that for each text snippet just
             up to one annotation may be applicable). If true, a multi-label Model will be trained (i.e.
@@ -1017,10 +1118,20 @@ class AutoMLHook(GoogleBaseHook):
             model_display_name=model_display_name,
             model_labels=model_labels,
             sync=sync,
+            parent_model=parent_model,
+            is_default_version=is_default_version,
+            model_version_aliases=model_version_aliases,
+            model_version_description=model_version_description,
         )
-        model.wait()
-
-        return model
+        training_id = self.extract_training_id(self._job.resource_name)
+        if model:
+            model.wait()
+        else:
+            self.log.warning(
+                "Training did not produce a Managed Model returning None. AutoML Text Training "
+                "Pipeline is not configured to upload a Model."
+            )
+        return model, training_id
 
     @GoogleBaseHook.fallback_to_default_project_id
     def create_auto_ml_video_training_job(
@@ -1031,17 +1142,21 @@ class AutoMLHook(GoogleBaseHook):
         dataset: datasets.VideoDataset,
         prediction_type: str = "classification",
         model_type: str = "CLOUD",
-        labels: Optional[Dict[str, str]] = None,
-        training_encryption_spec_key_name: Optional[str] = None,
-        model_encryption_spec_key_name: Optional[str] = None,
-        training_fraction_split: Optional[float] = None,
-        test_fraction_split: Optional[float] = None,
-        training_filter_split: Optional[str] = None,
-        test_filter_split: Optional[str] = None,
-        model_display_name: Optional[str] = None,
-        model_labels: Optional[Dict[str, str]] = None,
+        labels: dict[str, str] | None = None,
+        training_encryption_spec_key_name: str | None = None,
+        model_encryption_spec_key_name: str | None = None,
+        training_fraction_split: float | None = None,
+        test_fraction_split: float | None = None,
+        training_filter_split: str | None = None,
+        test_filter_split: str | None = None,
+        model_display_name: str | None = None,
+        model_labels: dict[str, str] | None = None,
         sync: bool = True,
-    ) -> models.Model:
+        parent_model: str | None = None,
+        is_default_version: bool | None = None,
+        model_version_aliases: list[str] | None = None,
+        model_version_description: str | None = None,
+    ) -> tuple[models.Model | None, str]:
         """
         Create an AutoML Video Training Job.
 
@@ -1061,6 +1176,24 @@ class AutoMLHook(GoogleBaseHook):
             pre-defined, custom labels.
             "action_recognition" - A video action recognition model pinpoints the location of actions with
             short temporal durations (~1 second).
+        :param parent_model: Optional. The resource name or model ID of an existing model.
+            The new model uploaded by this job will be a version of `parent_model`.
+            Only set this field when training a new version of an existing model.
+        :param is_default_version: Optional. When set to True, the newly uploaded model version will
+            automatically have alias "default" included. Subsequent uses of
+            the model produced by this job without a version specified will
+            use this "default" version.
+            When set to False, the "default" alias will not be moved.
+            Actions targeting the model version produced by this job will need
+            to specifically reference this version by ID or alias.
+            New model uploads, i.e. version 1, will always be "default" aliased.
+        :param model_version_aliases: Optional. User provided version aliases so that the model version
+            uploaded by this job can be referenced via alias instead of
+            auto-generated version ID. A default version alias will be created
+            for the first version of the model.
+            The format is [a-z][a-zA-Z0-9-]{0,126}[a-z0-9]
+        :param model_version_description: Optional. The description of the model version
+            being uploaded by this job.
         :param model_type: Required. One of the following:
             "CLOUD" - available for "classification", "object_tracking" and "action_recognition" A Model best
             tailored to be used within Google Cloud, and which cannot be exported.
@@ -1142,10 +1275,20 @@ class AutoMLHook(GoogleBaseHook):
             model_display_name=model_display_name,
             model_labels=model_labels,
             sync=sync,
+            parent_model=parent_model,
+            is_default_version=is_default_version,
+            model_version_aliases=model_version_aliases,
+            model_version_description=model_version_description,
         )
-        model.wait()
-
-        return model
+        training_id = self.extract_training_id(self._job.resource_name)
+        if model:
+            model.wait()
+        else:
+            self.log.warning(
+                "Training did not produce a Managed Model returning None. AutoML Video Training "
+                "Pipeline is not configured to upload a Model."
+            )
+        return model, training_id
 
     @GoogleBaseHook.fallback_to_default_project_id
     def delete_training_pipeline(
@@ -1153,12 +1296,12 @@ class AutoMLHook(GoogleBaseHook):
         project_id: str,
         region: str,
         training_pipeline: str,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> Operation:
         """
-        Deletes a TrainingPipeline.
+        Delete a TrainingPipeline.
 
         :param project_id: Required. The ID of the Google Cloud project that the service belongs to.
         :param region: Required. The ID of the Google Cloud region that the service belongs to.
@@ -1172,7 +1315,7 @@ class AutoMLHook(GoogleBaseHook):
 
         result = client.delete_training_pipeline(
             request={
-                'name': name,
+                "name": name,
             },
             retry=retry,
             timeout=timeout,
@@ -1186,12 +1329,12 @@ class AutoMLHook(GoogleBaseHook):
         project_id: str,
         region: str,
         training_pipeline: str,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> TrainingPipeline:
         """
-        Gets a TrainingPipeline.
+        Get a TrainingPipeline.
 
         :param project_id: Required. The ID of the Google Cloud project that the service belongs to.
         :param region: Required. The ID of the Google Cloud region that the service belongs to.
@@ -1205,7 +1348,7 @@ class AutoMLHook(GoogleBaseHook):
 
         result = client.get_training_pipeline(
             request={
-                'name': name,
+                "name": name,
             },
             retry=retry,
             timeout=timeout,
@@ -1218,16 +1361,16 @@ class AutoMLHook(GoogleBaseHook):
         self,
         project_id: str,
         region: str,
-        page_size: Optional[int] = None,
-        page_token: Optional[str] = None,
-        filter: Optional[str] = None,
-        read_mask: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        page_size: int | None = None,
+        page_token: str | None = None,
+        filter: str | None = None,
+        read_mask: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> ListTrainingPipelinesPager:
         """
-        Lists TrainingPipelines in a Location.
+        List TrainingPipelines in a Location.
 
         :param project_id: Required. The ID of the Google Cloud project that the service belongs to.
         :param region: Required. The ID of the Google Cloud region that the service belongs to.
@@ -1262,11 +1405,11 @@ class AutoMLHook(GoogleBaseHook):
 
         result = client.list_training_pipelines(
             request={
-                'parent': parent,
-                'page_size': page_size,
-                'page_token': page_token,
-                'filter': filter,
-                'read_mask': read_mask,
+                "parent": parent,
+                "page_size": page_size,
+                "page_token": page_token,
+                "filter": filter,
+                "read_mask": read_mask,
             },
             retry=retry,
             timeout=timeout,

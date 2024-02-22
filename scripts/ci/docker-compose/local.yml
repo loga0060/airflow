@@ -15,18 +15,19 @@
 # specific language governing permissions and limitations
 # under the License.
 ---
-version: "3.7"
 services:
   airflow:
     stdin_open: true  # docker run -i
     tty: true  # docker run -t
+    environment:
+      - AIRFLOW__CORE__PLUGINS_FOLDER=/files/plugins
     # We need to mount files and directories individually because some files
     # such apache_airflow.egg-info should not be mounted from host
     # we only mount those files, so that it makes sense to edit while developing
     # or those that might be useful to see in the host as output of the
     # tests (such as logs)
     volumes:
-      # START automatically generated volumes from NECESSARY_HOST_VOLUMES in docker_command_utils.py
+      # START automatically generated volumes from VOLUMES_FOR_SELECTED_MOUNTS in docker_command_utils.py
       - type: bind
         source: ../../../.bash_aliases
         target: /root/.bash_aliases
@@ -34,14 +35,11 @@ services:
         source: ../../../.bash_history
         target: /root/.bash_history
       - type: bind
-        source: ../../../.coveragerc
-        target: /opt/airflow/.coveragerc
+        source: ../../../.build
+        target: /opt/airflow/.build
       - type: bind
         source: ../../../.dockerignore
         target: /opt/airflow/.dockerignore
-      - type: bind
-        source: ../../../.flake8
-        target: /opt/airflow/.flake8
       - type: bind
         source: ../../../.github
         target: /opt/airflow/.github
@@ -52,23 +50,23 @@ services:
         source: ../../../.rat-excludes
         target: /opt/airflow/.rat-excludes
       - type: bind
-        source: ../../../RELEASE_NOTES.rst
-        target: /opt/airflow/RELEASE_NOTES.rst
-      - type: bind
         source: ../../../LICENSE
         target: /opt/airflow/LICENSE
-      - type: bind
-        source: ../../../MANIFEST.in
-        target: /opt/airflow/MANIFEST.in
       - type: bind
         source: ../../../NOTICE
         target: /opt/airflow/NOTICE
       - type: bind
+        source: ../../../RELEASE_NOTES.rst
+        target: /opt/airflow/RELEASE_NOTES.rst
+      - type: bind
         source: ../../../airflow
         target: /opt/airflow/airflow
       - type: bind
-        source: ../../../provider_packages
-        target: /opt/airflow/provider_packages
+        source: ../../../constraints
+        target: /opt/airflow/constraints
+      - type: bind
+        source: ../../../clients
+        target: /opt/airflow/clients
       - type: bind
         source: ../../../dags
         target: /opt/airflow/dags
@@ -79,6 +77,9 @@ services:
         source: ../../../docs
         target: /opt/airflow/docs
       - type: bind
+        source: ../../../generated
+        target: /opt/airflow/generated
+      - type: bind
         source: ../../../hooks
         target: /opt/airflow/hooks
       - type: bind
@@ -88,23 +89,17 @@ services:
         source: ../../../pyproject.toml
         target: /opt/airflow/pyproject.toml
       - type: bind
-        source: ../../../pytest.ini
-        target: /opt/airflow/pytest.ini
-      - type: bind
         source: ../../../scripts
         target: /opt/airflow/scripts
       - type: bind
         source: ../../../scripts/docker/entrypoint_ci.sh
         target: /entrypoint
       - type: bind
-        source: ../../../setup.cfg
-        target: /opt/airflow/setup.cfg
-      - type: bind
-        source: ../../../setup.py
-        target: /opt/airflow/setup.py
-      - type: bind
         source: ../../../tests
         target: /opt/airflow/tests
+      - type: bind
+        source: ../../../helm_tests
+        target: /opt/airflow/helm_tests
       - type: bind
         source: ../../../kubernetes_tests
         target: /opt/airflow/kubernetes_tests
@@ -115,6 +110,6 @@ services:
         source: ../../../chart
         target: /opt/airflow/chart
       - type: bind
-        source: ../../../metastore_browser
-        target: /opt/airflow/metastore_browser
-        # END automatically generated volumes from NECESSARY_HOST_VOLUMES in docker_command_utils.py
+        source: ../../../hatch_build.py
+        target: /opt/airflow/hatch_build.py
+        # END automatically generated volumes from VOLUMES_FOR_SELECTED_MOUNTS in docker_command_utils.py

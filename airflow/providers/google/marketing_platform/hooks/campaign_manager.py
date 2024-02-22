@@ -16,26 +16,30 @@
 # specific language governing permissions and limitations
 # under the License.
 """This module contains Google Campaign Manager hook."""
-from typing import Any, Dict, List, Optional, Sequence, Union
+from __future__ import annotations
 
-from googleapiclient import http
+from typing import TYPE_CHECKING, Any, Sequence
+
 from googleapiclient.discovery import Resource, build
 
 from airflow.exceptions import AirflowException
 from airflow.providers.google.common.hooks.base_google import GoogleBaseHook
 
+if TYPE_CHECKING:
+    from googleapiclient import http
+
 
 class GoogleCampaignManagerHook(GoogleBaseHook):
     """Hook for Google Campaign Manager."""
 
-    _conn = None  # type: Optional[Resource]
+    _conn: Resource | None = None
 
     def __init__(
         self,
-        api_version: str = "v3.3",
+        api_version: str = "v4",
         gcp_conn_id: str = "google_cloud_default",
-        delegate_to: Optional[str] = None,
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
+        delegate_to: str | None = None,
+        impersonation_chain: str | Sequence[str] | None = None,
     ) -> None:
         super().__init__(
             gcp_conn_id=gcp_conn_id,
@@ -45,7 +49,7 @@ class GoogleCampaignManagerHook(GoogleBaseHook):
         self.api_version = api_version
 
     def get_conn(self) -> Resource:
-        """Retrieves connection to Campaign Manager."""
+        """Retrieve connection to Campaign Manager."""
         if not self._conn:
             http_authorized = self._authorize()
             self._conn = build(
@@ -58,7 +62,7 @@ class GoogleCampaignManagerHook(GoogleBaseHook):
 
     def delete_report(self, profile_id: str, report_id: str) -> Any:
         """
-        Deletes a report by its ID.
+        Delete a report by its ID.
 
         :param profile_id: The DFA user profile ID.
         :param report_id: The ID of the report.
@@ -71,9 +75,9 @@ class GoogleCampaignManagerHook(GoogleBaseHook):
         )
         return response
 
-    def insert_report(self, profile_id: str, report: Dict[str, Any]) -> Any:
+    def insert_report(self, profile_id: str, report: dict[str, Any]) -> Any:
         """
-        Creates a report.
+        Create  a report.
 
         :param profile_id: The DFA user profile ID.
         :param report: The report resource to be inserted.
@@ -89,13 +93,13 @@ class GoogleCampaignManagerHook(GoogleBaseHook):
     def list_reports(
         self,
         profile_id: str,
-        max_results: Optional[int] = None,
-        scope: Optional[str] = None,
-        sort_field: Optional[str] = None,
-        sort_order: Optional[str] = None,
-    ) -> List[dict]:
+        max_results: int | None = None,
+        scope: str | None = None,
+        sort_field: str | None = None,
+        sort_order: str | None = None,
+    ) -> list[dict]:
         """
-        Retrieves list of reports.
+        Retrieve  list of reports.
 
         :param profile_id: The DFA user profile ID.
         :param max_results: Maximum number of results to return.
@@ -103,7 +107,7 @@ class GoogleCampaignManagerHook(GoogleBaseHook):
         :param sort_field: The field by which to sort the list.
         :param sort_order: Order of sorted results.
         """
-        reports: List[dict] = []
+        reports: list[dict] = []
         conn = self.get_conn()
         request = conn.reports().list(
             profileId=profile_id,
@@ -121,7 +125,7 @@ class GoogleCampaignManagerHook(GoogleBaseHook):
 
     def patch_report(self, profile_id: str, report_id: str, update_mask: dict) -> Any:
         """
-        Updates a report. This method supports patch semantics.
+        Update  a report. This method supports patch semantics.
 
         :param profile_id: The DFA user profile ID.
         :param report_id: The ID of the report.
@@ -136,9 +140,9 @@ class GoogleCampaignManagerHook(GoogleBaseHook):
         )
         return response
 
-    def run_report(self, profile_id: str, report_id: str, synchronous: Optional[bool] = None) -> Any:
+    def run_report(self, profile_id: str, report_id: str, synchronous: bool | None = None) -> Any:
         """
-        Runs a report.
+        Run a report.
 
         :param profile_id: The DFA profile ID.
         :param report_id: The ID of the report.
@@ -154,7 +158,7 @@ class GoogleCampaignManagerHook(GoogleBaseHook):
 
     def update_report(self, profile_id: str, report_id: str) -> Any:
         """
-        Updates a report.
+        Update a report.
 
         :param profile_id: The DFA user profile ID.
         :param report_id: The ID of the report.
@@ -169,7 +173,7 @@ class GoogleCampaignManagerHook(GoogleBaseHook):
 
     def get_report(self, file_id: str, profile_id: str, report_id: str) -> Any:
         """
-        Retrieves a report file.
+        Retrieve a report file.
 
         :param profile_id: The DFA user profile ID.
         :param report_id: The ID of the report.
@@ -186,7 +190,7 @@ class GoogleCampaignManagerHook(GoogleBaseHook):
 
     def get_report_file(self, file_id: str, profile_id: str, report_id: str) -> http.HttpRequest:
         """
-        Retrieves a media part of report file.
+        Retrieve a media part of report file.
 
         :param profile_id: The DFA user profile ID.
         :param report_id: The ID of the report.
@@ -203,12 +207,12 @@ class GoogleCampaignManagerHook(GoogleBaseHook):
 
     @staticmethod
     def _conversions_batch_request(
-        conversions: List[Dict[str, Any]],
+        conversions: list[dict[str, Any]],
         encryption_entity_type: str,
         encryption_entity_id: int,
         encryption_source: str,
         kind: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         return {
             "kind": kind,
             "conversions": conversions,
@@ -223,18 +227,18 @@ class GoogleCampaignManagerHook(GoogleBaseHook):
     def conversions_batch_insert(
         self,
         profile_id: str,
-        conversions: List[Dict[str, Any]],
+        conversions: list[dict[str, Any]],
         encryption_entity_type: str,
         encryption_entity_id: int,
         encryption_source: str,
         max_failed_inserts: int = 0,
     ) -> Any:
         """
-        Inserts conversions.
+        Insert conversions.
 
         :param profile_id: User profile ID associated with this request.
         :param conversions: Conversations to insert, should by type of Conversation:
-            https://developers.google.com/doubleclick-advertisers/v3.3/conversions#resource
+            https://developers.google.com/doubleclick-advertisers/rest/v4/conversions/batchinsert
         :param encryption_entity_type: The encryption entity type. This should match the encryption
             configuration for ad serving or Data Transfer.
         :param encryption_entity_id: The encryption entity ID. This should match the encryption
@@ -258,8 +262,8 @@ class GoogleCampaignManagerHook(GoogleBaseHook):
             )
             .execute(num_retries=self.num_retries)
         )
-        if response.get('hasFailures', False):
-            errored_conversions = [stat['errors'] for stat in response['status'] if 'errors' in stat]
+        if response.get("hasFailures", False):
+            errored_conversions = [stat["errors"] for stat in response["status"] if "errors" in stat]
             if len(errored_conversions) > max_failed_inserts:
                 raise AirflowException(errored_conversions)
         return response
@@ -267,18 +271,18 @@ class GoogleCampaignManagerHook(GoogleBaseHook):
     def conversions_batch_update(
         self,
         profile_id: str,
-        conversions: List[Dict[str, Any]],
+        conversions: list[dict[str, Any]],
         encryption_entity_type: str,
         encryption_entity_id: int,
         encryption_source: str,
         max_failed_updates: int = 0,
     ) -> Any:
         """
-        Updates existing conversions.
+        Update existing conversions.
 
         :param profile_id: User profile ID associated with this request.
         :param conversions: Conversations to update, should by type of Conversation:
-            https://developers.google.com/doubleclick-advertisers/v3.3/conversions#resource
+            https://developers.google.com/doubleclick-advertisers/rest/v4/conversions/batchupdate
         :param encryption_entity_type: The encryption entity type. This should match the encryption
             configuration for ad serving or Data Transfer.
         :param encryption_entity_id: The encryption entity ID. This should match the encryption
@@ -302,8 +306,8 @@ class GoogleCampaignManagerHook(GoogleBaseHook):
             )
             .execute(num_retries=self.num_retries)
         )
-        if response.get('hasFailures', False):
-            errored_conversions = [stat['errors'] for stat in response['status'] if 'errors' in stat]
+        if response.get("hasFailures", False):
+            errored_conversions = [stat["errors"] for stat in response["status"] if "errors" in stat]
             if len(errored_conversions) > max_failed_updates:
                 raise AirflowException(errored_conversions)
         return response

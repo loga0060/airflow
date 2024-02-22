@@ -15,14 +15,22 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-from typing import Any, Dict, List, Optional
+from __future__ import annotations
 
+from typing import Any
+
+from deprecated import deprecated
 from googleapiclient.discovery import Resource, build
 from googleapiclient.http import MediaFileUpload
 
+from airflow.exceptions import AirflowProviderDeprecationWarning
 from airflow.providers.google.common.hooks.base_google import GoogleBaseHook
 
 
+@deprecated(
+    reason="The `GoogleAnalyticsHook` class is deprecated, please use `GoogleAnalyticsAdminHook` instead.",
+    category=AirflowProviderDeprecationWarning,
+)
 class GoogleAnalyticsHook(GoogleBaseHook):
     """Hook for Google Analytics 360."""
 
@@ -31,9 +39,9 @@ class GoogleAnalyticsHook(GoogleBaseHook):
         self.api_version = api_version
         self._conn = None
 
-    def _paginate(self, resource: Resource, list_args: Optional[Dict[str, Any]] = None) -> List[dict]:
+    def _paginate(self, resource: Resource, list_args: dict[str, Any] | None = None) -> list[dict]:
         list_args = list_args or {}
-        result: List[dict] = []
+        result: list[dict] = []
         while True:
             # start index has value 1
             request = resource.list(start_index=len(result) + 1, **list_args)
@@ -47,7 +55,7 @@ class GoogleAnalyticsHook(GoogleBaseHook):
         return result
 
     def get_conn(self) -> Resource:
-        """Retrieves connection to Google Analytics 360."""
+        """Retrieve connection to Google Analytics 360."""
         if not self._conn:
             http_authorized = self._authorize()
             self._conn = build(
@@ -58,8 +66,8 @@ class GoogleAnalyticsHook(GoogleBaseHook):
             )
         return self._conn
 
-    def list_accounts(self) -> List[Dict[str, Any]]:
-        """Lists accounts list from Google Analytics 360."""
+    def list_accounts(self) -> list[dict[str, Any]]:
+        """List accounts list from Google Analytics 360."""
         self.log.info("Retrieving accounts list...")
         conn = self.get_conn()
         accounts = conn.management().accounts()
@@ -68,16 +76,15 @@ class GoogleAnalyticsHook(GoogleBaseHook):
 
     def get_ad_words_link(
         self, account_id: str, web_property_id: str, web_property_ad_words_link_id: str
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
-        Returns a web property-Google Ads link to which the user has access.
+        Return a web property-Google Ads link to which the user has access.
 
         :param account_id: ID of the account which the given web property belongs to.
         :param web_property_id: Web property-Google Ads link UA-string.
         :param web_property_ad_words_link_id: to retrieve the Google Ads link for.
 
         :returns: web property-Google Ads
-        :rtype: Dict
         """
         self.log.info("Retrieving ad words links...")
         ad_words_link = (
@@ -93,15 +100,14 @@ class GoogleAnalyticsHook(GoogleBaseHook):
         )
         return ad_words_link
 
-    def list_ad_words_links(self, account_id: str, web_property_id: str) -> List[Dict[str, Any]]:
+    def list_ad_words_links(self, account_id: str, web_property_id: str) -> list[dict[str, Any]]:
         """
-        Lists webProperty-Google Ads links for a given web property.
+        List webProperty-Google Ads links for a given web property.
 
         :param account_id: ID of the account which the given web property belongs to.
         :param web_property_id: Web property UA-string to retrieve the Google Ads links for.
 
         :returns: list of entity Google Ads links.
-        :rtype: list
         """
         self.log.info("Retrieving ad words list...")
         conn = self.get_conn()
@@ -119,7 +125,7 @@ class GoogleAnalyticsHook(GoogleBaseHook):
         resumable_upload: bool = False,
     ) -> None:
         """
-        Uploads file to GA via the Data Import API
+        Upload file to GA via the Data Import API.
 
         :param file_location: The path and name of the file to upload.
         :param account_id: The GA account Id to which the data upload belongs.
@@ -153,10 +159,10 @@ class GoogleAnalyticsHook(GoogleBaseHook):
         account_id: str,
         web_property_id: str,
         custom_data_source_id: str,
-        delete_request_body: Dict[str, Any],
+        delete_request_body: dict[str, Any],
     ) -> None:
         """
-        Deletes the uploaded data for a given account/property/dataset
+        Delete the uploaded data for a given account/property/dataset.
 
         :param account_id: The GA account Id to which the data upload belongs.
         :param web_property_id: UA-string associated with the upload.
@@ -178,9 +184,9 @@ class GoogleAnalyticsHook(GoogleBaseHook):
             body=delete_request_body,
         ).execute()
 
-    def list_uploads(self, account_id, web_property_id, custom_data_source_id) -> List[Dict[str, Any]]:
+    def list_uploads(self, account_id, web_property_id, custom_data_source_id) -> list[dict[str, Any]]:
         """
-        Get list of data upload from GA
+        Get list of data upload from GA.
 
         :param account_id: The GA account Id to which the data upload belongs.
         :param web_property_id: UA-string associated with the upload.

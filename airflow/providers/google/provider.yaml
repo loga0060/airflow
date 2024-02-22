@@ -19,16 +19,51 @@
 package-name: apache-airflow-providers-google
 name: Google
 description: |
-    Google services including:
+  Google services including:
 
-      - `Google Ads <https://ads.google.com/>`__
-      - `Google Cloud (GCP) <https://cloud.google.com/>`__
-      - `Google Firebase <https://firebase.google.com/>`__
-      - `Google LevelDB <https://github.com/google/leveldb/>`__
-      - `Google Marketing Platform <https://marketingplatform.google.com/>`__
-      - `Google Workspace <https://workspace.google.com/>`__ (formerly Google Suite)
+    - `Google Ads <https://ads.google.com/>`__
+    - `Google Cloud (GCP) <https://cloud.google.com/>`__
+    - `Google Firebase <https://firebase.google.com/>`__
+    - `Google LevelDB <https://github.com/google/leveldb/>`__
+    - `Google Marketing Platform <https://marketingplatform.google.com/>`__
+    - `Google Workspace <https://workspace.google.com/>`__ (formerly Google Suite)
 
+state: ready
+source-date-epoch: 1707636385
+# note that those versions are maintained by release manager - do not update them manually
 versions:
+  - 10.15.0
+  - 10.14.0
+  - 10.13.1
+  - 10.13.0
+  - 10.12.0
+  - 10.11.1
+  - 10.11.0
+  - 10.10.1
+  - 10.10.0
+  - 10.9.0
+  - 10.8.0
+  - 10.7.0
+  - 10.6.0
+  - 10.5.0
+  - 10.4.0
+  - 10.3.0
+  - 10.2.0
+  - 10.1.1
+  - 10.1.0
+  - 10.0.0
+  - 9.0.0
+  - 8.12.0
+  - 8.11.0
+  - 8.10.0
+  - 8.9.0
+  - 8.8.0
+  - 8.7.0
+  - 8.6.0
+  - 8.5.0
+  - 8.4.0
+  - 8.3.0
+  - 8.2.0
   - 8.1.0
   - 8.0.0
   - 7.0.0
@@ -51,63 +86,102 @@ versions:
   - 1.0.0
 
 dependencies:
-  - apache-airflow>=2.2.0
-  # Google has very clear rules on what dependencies should be used. All the limits below
-  # follow strict guidelines of Google Libraries as quoted here:
-  # While this issue is open, dependents of google-api-core, google-cloud-core. and google-auth
-  # should preserve >1, <3 pins on these packages.
-  # https://github.com/googleapis/google-cloud-python/issues/10566
-  # Some of Google Packages are limited to <2.0.0 because 2.0.0 releases of the libraries
-  # Introduced breaking changes across the board. Those libraries should be upgraded soon
-  # TODO: Upgrade all Google libraries that are limited to <2.0.0
-  - PyOpenSSL
-  - google-ads>=15.1.1
-  - google-api-core>=2.7.0,<3.0.0
-  - google-api-python-client>=1.6.0,<2.0.0
+  - apache-airflow>=2.6.0
+  - apache-airflow-providers-common-sql>=1.7.2
+  - asgiref>=3.5.2
+  # When upgrading the major version of gcloud-aio-auth we want to make sure to
+  # 1. use at least version 5.2, which uses offset-aware datetime internally
+  # 2. override Token's new `refresh` method instead of `acquire_access_token`, which allows us to avoid
+  #    dealing with internals like `access_token_acquired_at`
+  # 3. continue to `subclass gcloud.aio.auth.token.Token` instead of `BaseToken`, since instances of
+  #    `_CredentialsToken` are instances of `Token` and used as such
+  - gcloud-aio-auth>=4.0.0,<5.0.0
+  - gcloud-aio-bigquery>=6.1.2
+  - gcloud-aio-storage>=9.0.0
+  - gcsfs>=2023.10.0
+  - google-ads>=22.1.0
+  - google-analytics-admin
+  # Google-api-core 2.16.0 back-compat issue: https://github.com/googleapis/python-api-core/issues/576
+  - google-api-core>=2.11.0,!=2.16.0
+  - google-api-python-client>=1.6.0
   - google-auth>=1.0.0
   - google-auth-httplib2>=0.0.1
-  - google-cloud-aiplatform>=1.7.1,<2.0.0
-  - google-cloud-automl>=2.1.0
-  - google-cloud-bigquery-datatransfer>=3.0.0
-  - google-cloud-bigtable>=1.0.0,<2.0.0
-  - google-cloud-build>=3.0.0
-  - google-cloud-container>=2.2.0,<3.0.0
-  - google-cloud-datacatalog>=3.0.0
-  - google-cloud-dataplex>=0.1.0
-  - google-cloud-dataproc>=3.1.0
-  - google-cloud-dataproc-metastore>=1.2.0,<2.0.0
-  - google-cloud-dlp>=0.11.0,<2.0.0
-  - google-cloud-kms>=2.0.0
-  - google-cloud-language>=1.1.1,<2.0.0
-  - google-cloud-logging>=2.1.1
-  - google-cloud-memcache>=0.2.0
-  - google-cloud-monitoring>=2.0.0
-  - google-cloud-os-login>=2.0.0
-  - google-cloud-orchestration-airflow>=1.0.0,<2.0.0
-  - google-cloud-pubsub>=2.0.0
-  - google-cloud-redis>=2.0.0
-  - google-cloud-secret-manager>=0.2.0,<2.0.0
-  - google-cloud-spanner>=1.10.0,<2.0.0
-  - google-cloud-speech>=0.36.3,<2.0.0
-  - google-cloud-storage>=1.30,<2.0.0
-  - google-cloud-tasks>=2.0.0
-  - google-cloud-texttospeech>=0.4.0,<2.0.0
-  - google-cloud-translate>=1.5.0,<2.0.0
-  - google-cloud-videointelligence>=1.7.0,<2.0.0
-  - google-cloud-vision>=0.35.2,<2.0.0
-  - google-cloud-workflows>=0.1.0,<2.0.0
+  - google-cloud-aiplatform>=1.22.1
+  - google-cloud-automl>=2.12.0
+  - google-cloud-bigquery-datatransfer>=3.13.0
+  - google-cloud-bigtable>=2.17.0
+  - google-cloud-build>=3.22.0
+  - google-cloud-compute>=1.10.0
+  - google-cloud-container>=2.17.4
+  - google-cloud-datacatalog>=3.11.1
+  - google-cloud-dataflow-client>=0.8.6
+  - google-cloud-dataform>=0.5.0
+  - google-cloud-dataplex>=1.10.0
+  - google-cloud-dataproc>=5.8.0
+  - google-cloud-dataproc-metastore>=1.12.0
+  - google-cloud-dlp>=3.12.0
+  - google-cloud-kms>=2.15.0
+  - google-cloud-language>=2.9.0
+  - google-cloud-logging>=3.5.0
+  - google-cloud-memcache>=1.7.0
+  - google-cloud-monitoring>=2.18.0
+  - google-cloud-orchestration-airflow>=1.10.0
+  - google-cloud-os-login>=2.9.1
+  - google-cloud-pubsub>=2.19.0
+  - google-cloud-redis>=2.12.0
+  - google-cloud-secret-manager>=2.16.0
+  - google-cloud-spanner>=3.11.1
+  - google-cloud-speech>=2.18.0
+  - google-cloud-storage>=2.7.0
+  - google-cloud-storage-transfer>=1.4.1
+  - google-cloud-tasks>=2.13.0
+  - google-cloud-texttospeech>=2.14.1
+  - google-cloud-translate>=3.11.0
+  - google-cloud-videointelligence>=2.11.0
+  - google-cloud-vision>=3.4.0
+  - google-cloud-workflows>=1.10.0
+  - google-cloud-run>=0.9.0
+  - google-cloud-batch>=0.13.0
   - grpcio-gcp>=0.2.2
   - httpx
   - json-merge-patch>=0.2
   - looker-sdk>=22.2.0
   - pandas-gbq
-  - pandas>=0.17.1
-  - sqlalchemy-bigquery>=1.2.1
+  - pandas>=1.2.5
   # A transient dependency of google-cloud-bigquery-datatransfer, but we
   # further constrain it since older versions are buggy.
   - proto-plus>=1.19.6
+  - PyOpenSSL
+  - sqlalchemy-bigquery>=1.2.1
+  - sqlalchemy-spanner>=1.6.2
+
+additional-extras:
+  - name: apache.beam
+    dependencies:
+      - apache-beam[gcp]
+  - name: cncf.kubernetes
+    dependencies:
+      - apache-airflow-providers-cncf-kubernetes>=7.2.0
+  - name: leveldb
+    dependencies:
+      - plyvel
+  - name: oracle
+    dependencies:
+      - apache-airflow-providers-oracle>=3.1.0
+  - name: facebook
+    dependencies:
+      - apache-airflow-providers-facebook>=2.2.0
+  - name: amazon
+    dependencies:
+      - apache-airflow-providers-amazon>=2.6.0
 
 integrations:
+  - integration-name: Google Analytics (GA4)
+    external-doc-url: https://analytics.google.com/
+    logo: /integration-logos/gcp/Google-Analytics.png
+    how-to-guide:
+      - /docs/apache-airflow-providers-google/operators/marketing_platform/analytics_admin.rst
+    tags: [gmp]
   - integration-name: Google Analytics360
     external-doc-url: https://analytics.google.com/
     logo: /integration-logos/gcp/Google-Analytics.png
@@ -150,10 +224,29 @@ integrations:
       - /docs/apache-airflow-providers-google/operators/cloud/cloud_build.rst
     logo: /integration-logos/gcp/Cloud-Build.png
     tags: [gcp]
+  - integration-name: Google Cloud Common
+    external-doc-url: https://cloud.google.com/
+    tags: [gcp]
+    logo: /integration-logos/gcp/Google.png
   - integration-name: Google Cloud Composer
     external-doc-url: https://cloud.google.com/composer
     how-to-guide:
       - /docs/apache-airflow-providers-google/operators/cloud/cloud_composer.rst
+    tags: [google]
+  - integration-name: Google Cloud Run
+    external-doc-url: https://cloud.google.com/run
+    how-to-guide:
+      - /docs/apache-airflow-providers-google/operators/cloud/cloud_run.rst
+    tags: [google]
+  - integration-name: Google Cloud Batch
+    external-doc-url: https://cloud.google.com/batch
+    how-to-guide:
+      - /docs/apache-airflow-providers-google/operators/cloud/cloud_batch.rst
+    tags: [google]
+  - integration-name: Google Cloud Dataform
+    external-doc-url: https://cloud.google.com/dataform/
+    how-to-guide:
+      - /docs/apache-airflow-providers-google/operators/cloud/dataform.rst
     tags: [google]
   - integration-name: Google Cloud Data Loss Prevention (DLP)
     external-doc-url: https://cloud.google.com/dlp/
@@ -289,6 +382,11 @@ integrations:
       - /docs/apache-airflow-providers-google/operators/cloud/dataflow.rst
     logo: /integration-logos/gcp/Cloud-Dataflow.png
     tags: [gcp]
+  - integration-name: Google Data Pipelines
+    external-doc-url: https://cloud.google.com/dataflow/docs/reference/data-pipelines/rest
+    how-to-guide:
+      - /docs/apache-airflow-providers-google/operators/cloud/datapipeline.rst
+    tags: [gcp]
   - integration-name: Google Data Fusion
     external-doc-url: https://cloud.google.com/data-fusion/
     how-to-guide:
@@ -405,7 +503,7 @@ integrations:
       - /docs/apache-airflow-providers-google/operators/cloud/workflows.rst
     tags: [gcp]
   - integration-name: Google LevelDB
-    external-doc-url: https://github.com/google/leveldb/blob/master/doc/index.md
+    external-doc-url: https://github.com/google/leveldb/blob/main/doc/index.md
     how-to-guide:
       - /docs/apache-airflow-providers-google/operators/leveldb/leveldb.rst
     tags: [google]
@@ -425,6 +523,9 @@ operators:
   - integration-name: Google Ads
     python-modules:
       - airflow.providers.google.ads.operators.ads
+  - integration-name: Google Cloud Common
+    python-modules:
+      - airflow.providers.google.cloud.operators.cloud_base
   - integration-name: Google AutoML
     python-modules:
       - airflow.providers.google.cloud.operators.automl
@@ -443,6 +544,9 @@ operators:
   - integration-name: Google Cloud Composer
     python-modules:
       - airflow.providers.google.cloud.operators.cloud_composer
+  - integration-name: Google Cloud Run
+    python-modules:
+      - airflow.providers.google.cloud.operators.cloud_run
   - integration-name: Google Cloud Memorystore
     python-modules:
       - airflow.providers.google.cloud.operators.cloud_memorystore
@@ -461,6 +565,9 @@ operators:
   - integration-name: Google Dataflow
     python-modules:
       - airflow.providers.google.cloud.operators.dataflow
+  - integration-name: Google Data Pipelines
+    python-modules:
+      - airflow.providers.google.cloud.operators.datapipeline
   - integration-name: Google Data Fusion
     python-modules:
       - airflow.providers.google.cloud.operators.datafusion
@@ -535,6 +642,9 @@ operators:
   - integration-name: Google Cloud Firestore
     python-modules:
       - airflow.providers.google.firebase.operators.firestore
+  - integration-name: Google Analytics (GA4)
+    python-modules:
+      - airflow.providers.google.marketing_platform.operators.analytics_admin
   - integration-name: Google Analytics360
     python-modules:
       - airflow.providers.google.marketing_platform.operators.analytics
@@ -562,9 +672,16 @@ operators:
       - airflow.providers.google.cloud.operators.vertex_ai.endpoint_service
       - airflow.providers.google.cloud.operators.vertex_ai.hyperparameter_tuning_job
       - airflow.providers.google.cloud.operators.vertex_ai.model_service
+      - airflow.providers.google.cloud.operators.vertex_ai.pipeline_job
   - integration-name: Google Looker
     python-modules:
       - airflow.providers.google.cloud.operators.looker
+  - integration-name: Google Cloud Dataform
+    python-modules:
+      - airflow.providers.google.cloud.operators.dataform
+  - integration-name: Google Cloud Batch
+    python-modules:
+      - airflow.providers.google.cloud.operators.cloud_batch
 
 sensors:
   - integration-name: Google BigQuery
@@ -576,6 +693,9 @@ sensors:
   - integration-name: Google Bigtable
     python-modules:
       - airflow.providers.google.cloud.sensors.bigtable
+  - integration-name: Google Cloud Composer
+    python-modules:
+      - airflow.providers.google.cloud.sensors.cloud_composer
   - integration-name: Google Cloud Storage Transfer Service
     python-modules:
       - airflow.providers.google.cloud.sensors.cloud_storage_transfer_service
@@ -585,12 +705,18 @@ sensors:
   - integration-name: Google Data Fusion
     python-modules:
       - airflow.providers.google.cloud.sensors.datafusion
+  - integration-name: Google Dataprep
+    python-modules:
+      - airflow.providers.google.cloud.sensors.dataprep
   - integration-name: Google Dataplex
     python-modules:
       - airflow.providers.google.cloud.sensors.dataplex
   - integration-name: Google Dataproc
     python-modules:
       - airflow.providers.google.cloud.sensors.dataproc
+  - integration-name: Google Dataproc Metastore
+    python-modules:
+      - airflow.providers.google.cloud.sensors.dataproc_metastore
   - integration-name: Google Cloud Storage (GCS)
     python-modules:
       - airflow.providers.google.cloud.sensors.gcs
@@ -615,6 +741,15 @@ sensors:
   - integration-name: Google Looker
     python-modules:
       - airflow.providers.google.cloud.sensors.looker
+  - integration-name: Google Cloud Dataform
+    python-modules:
+      - airflow.providers.google.cloud.sensors.dataform
+  - integration-name: Google Cloud Tasks
+    python-modules:
+      - airflow.providers.google.cloud.sensors.tasks
+
+filesystems:
+  - airflow.providers.google.cloud.fs.gcs
 
 hooks:
   - integration-name: Google Ads
@@ -638,6 +773,9 @@ hooks:
   - integration-name: Google Cloud Composer
     python-modules:
       - airflow.providers.google.cloud.hooks.cloud_composer
+  - integration-name: Google Cloud Run
+    python-modules:
+      - airflow.providers.google.cloud.hooks.cloud_run
   - integration-name: Google Cloud Memorystore
     python-modules:
       - airflow.providers.google.cloud.hooks.cloud_memorystore
@@ -657,6 +795,9 @@ hooks:
   - integration-name: Google Dataflow
     python-modules:
       - airflow.providers.google.cloud.hooks.dataflow
+  - integration-name: Google Data Pipelines
+    python-modules:
+      - airflow.providers.google.cloud.hooks.datapipeline
   - integration-name: Google Data Fusion
     python-modules:
       - airflow.providers.google.cloud.hooks.datafusion
@@ -747,6 +888,9 @@ hooks:
   - integration-name: Google Cloud Firestore
     python-modules:
       - airflow.providers.google.firebase.hooks.firestore
+  - integration-name: Google Analytics (GA4)
+    python-modules:
+      - airflow.providers.google.marketing_platform.hooks.analytics_admin
   - integration-name: Google Analytics360
     python-modules:
       - airflow.providers.google.marketing_platform.hooks.analytics
@@ -780,9 +924,69 @@ hooks:
       - airflow.providers.google.cloud.hooks.vertex_ai.endpoint_service
       - airflow.providers.google.cloud.hooks.vertex_ai.hyperparameter_tuning_job
       - airflow.providers.google.cloud.hooks.vertex_ai.model_service
+      - airflow.providers.google.cloud.hooks.vertex_ai.pipeline_job
   - integration-name: Google Looker
     python-modules:
       - airflow.providers.google.cloud.hooks.looker
+  - integration-name: Google Cloud Dataform
+    python-modules:
+      - airflow.providers.google.cloud.hooks.dataform
+  - integration-name: Google Cloud Batch
+    python-modules:
+      - airflow.providers.google.cloud.hooks.cloud_batch
+
+triggers:
+  - integration-name: Google BigQuery Data Transfer Service
+    python-modules:
+      - airflow.providers.google.cloud.triggers.bigquery_dts
+  - integration-name: Google BigQuery
+    python-modules:
+      - airflow.providers.google.cloud.triggers.bigquery
+  - integration-name: Google Cloud Build
+    python-modules:
+      - airflow.providers.google.cloud.triggers.cloud_build
+  - integration-name: Google Cloud Composer
+    python-modules:
+      - airflow.providers.google.cloud.triggers.cloud_composer
+  - integration-name: Google Cloud Run
+    python-modules:
+      - airflow.providers.google.cloud.triggers.cloud_run
+  - integration-name: Google Cloud Storage Transfer Service
+    python-modules:
+      - airflow.providers.google.cloud.triggers.cloud_storage_transfer_service
+  - integration-name: Google Cloud SQL
+    python-modules:
+      - airflow.providers.google.cloud.triggers.cloud_sql
+  - integration-name: Google Dataflow
+    python-modules:
+      - airflow.providers.google.cloud.triggers.dataflow
+  - integration-name: Google Data Fusion
+    python-modules:
+      - airflow.providers.google.cloud.triggers.datafusion
+  - integration-name: Google Dataplex
+    python-modules:
+      - airflow.providers.google.cloud.triggers.dataplex
+  - integration-name: Google Dataproc
+    python-modules:
+      - airflow.providers.google.cloud.triggers.dataproc
+  - integration-name: Google Cloud Storage (GCS)
+    python-modules:
+      - airflow.providers.google.cloud.triggers.gcs
+  - integration-name: Google Kubernetes Engine
+    python-modules:
+      - airflow.providers.google.cloud.triggers.kubernetes_engine
+  - integration-name: Google Machine Learning Engine
+    python-modules:
+      - airflow.providers.google.cloud.triggers.mlengine
+  - integration-name: Google Cloud Pub/Sub
+    python-modules:
+      - airflow.providers.google.cloud.triggers.pubsub
+  - integration-name: Google Cloud
+    python-modules:
+      - airflow.providers.google.cloud.triggers.cloud_batch
+  - integration-name: Google Vertex AI
+    python-modules:
+      - airflow.providers.google.cloud.triggers.vertex_ai
 
 transfers:
   - source-integration-name: Presto
@@ -793,7 +997,7 @@ transfers:
     target-integration-name: Google Cloud Storage (GCS)
     how-to-guide: /docs/apache-airflow-providers-google/operators/transfer/trino_to_gcs.rst
     python-module: airflow.providers.google.cloud.transfers.trino_to_gcs
-  - source-integration-name: SQL
+  - source-integration-name: Common SQL
     target-integration-name: Google Cloud Storage (GCS)
     python-module: airflow.providers.google.cloud.transfers.sql_to_gcs
   - source-integration-name: Google Cloud Storage (GCS)
@@ -804,9 +1008,6 @@ transfers:
     target-integration-name: Google Cloud Storage (GCS)
     how-to-guide: /docs/apache-airflow-providers-google/operators/transfer/gdrive_to_gcs.rst
     python-module: airflow.providers.google.cloud.transfers.gdrive_to_gcs
-  - source-integration-name: Microsoft SQL Server (MSSQL)
-    target-integration-name: Google Cloud Storage (GCS)
-    python-module: airflow.providers.google.cloud.transfers.mssql_to_gcs
   - source-integration-name: Microsoft Azure FileShare
     target-integration-name: Google Cloud Storage (GCS)
     how-to-guide: /docs/apache-airflow-providers-google/operators/transfer/azure_fileshare_to_gcs.rst
@@ -832,15 +1033,26 @@ transfers:
     python-module: airflow.providers.google.cloud.transfers.gcs_to_sftp
   - source-integration-name: PostgreSQL
     target-integration-name: Google Cloud Storage (GCS)
+    how-to-guide: /docs/apache-airflow-providers-google/operators/transfer/postgres_to_gcs.rst
     python-module: airflow.providers.google.cloud.transfers.postgres_to_gcs
   - source-integration-name: Google BigQuery
+    target-integration-name: Common SQL
+    python-module: airflow.providers.google.cloud.transfers.bigquery_to_sql
+  - source-integration-name: Google BigQuery
     target-integration-name: MySQL
+    how-to-guide: /docs/apache-airflow-providers-google/operators/transfer/bigquery_to_mysql.rst
     python-module: airflow.providers.google.cloud.transfers.bigquery_to_mysql
   - source-integration-name: Google BigQuery
     target-integration-name: Microsoft SQL Server (MSSQL)
+    how-to-guide: /docs/apache-airflow-providers-google/operators/transfer/bigquery_to_mssql.rst
     python-module: airflow.providers.google.cloud.transfers.bigquery_to_mssql
+  - source-integration-name: Google BigQuery
+    target-integration-name: PostgreSQL
+    how-to-guide: /docs/apache-airflow-providers-google/operators/transfer/bigquery_to_postgres.rst
+    python-module: airflow.providers.google.cloud.transfers.bigquery_to_postgres
   - source-integration-name: Google Cloud Storage (GCS)
     target-integration-name: Google BigQuery
+    how-to-guide: /docs/apache-airflow-providers-google/operators/transfer/gcs_to_bigquery.rst
     python-module: airflow.providers.google.cloud.transfers.gcs_to_bigquery
   - source-integration-name: Google Cloud Storage (GCS)
     target-integration-name: Google Cloud Storage (GCS)
@@ -859,6 +1071,7 @@ transfers:
     python-module: airflow.providers.google.cloud.transfers.adls_to_gcs
   - source-integration-name: Google BigQuery
     target-integration-name: Google BigQuery
+    how-to-guide: /docs/apache-airflow-providers-google/operators/transfer/bigquery_to_bigquery.rst
     python-module: airflow.providers.google.cloud.transfers.bigquery_to_bigquery
   - source-integration-name: MySQL
     target-integration-name: Google Cloud Storage (GCS)
@@ -872,7 +1085,7 @@ transfers:
     target-integration-name: Google Spreadsheet
     how-to-guide: /docs/apache-airflow-providers-google/operators/transfer/gcs_to_sheets.rst
     python-module: airflow.providers.google.suite.transfers.gcs_to_sheets
-  - source-integration-name: SQL
+  - source-integration-name: Common SQL
     target-integration-name: Google Spreadsheet
     how-to-guide: /docs/apache-airflow-providers-google/operators/transfer/sql_to_sheets.rst
     python-module: airflow.providers.google.suite.transfers.sql_to_sheets
@@ -882,6 +1095,7 @@ transfers:
     python-module: airflow.providers.google.cloud.transfers.local_to_gcs
   - source-integration-name: Google BigQuery
     target-integration-name: Google Cloud Storage (GCS)
+    how-to-guide: /docs/apache-airflow-providers-google/operators/transfer/bigquery_to_gcs.rst
     python-module: airflow.providers.google.cloud.transfers.bigquery_to_gcs
   - source-integration-name: Google Cloud Storage (GCS)
     target-integration-name: Local
@@ -906,7 +1120,10 @@ transfers:
     target-integration-name: Google Cloud Storage (GCS)
     python-module: airflow.providers.google.cloud.transfers.mssql_to_gcs
     how-to-guide: /docs/apache-airflow-providers-google/operators/transfer/mssql_to_gcs.rst
-
+  - source-integration-name: Microsoft Azure Blob Storage
+    target-integration-name: Google Cloud Storage (GCS)
+    python-module: airflow.providers.google.cloud.transfers.azure_blob_to_gcs
+    how-to-guide: /docs/apache-airflow-providers-google/operators/transfer/azure_blob_to_gcs.rst
 
 connection-types:
   - hook-class-name: airflow.providers.google.common.hooks.base_google.GoogleBaseHook
@@ -927,23 +1144,40 @@ connection-types:
 extra-links:
   - airflow.providers.google.cloud.operators.bigquery.BigQueryConsoleLink
   - airflow.providers.google.cloud.operators.bigquery.BigQueryConsoleIndexableLink
-  - airflow.providers.google.cloud.operators.mlengine.AIPlatformConsoleLink
-  - airflow.providers.google.cloud.operators.datafusion.DataFusionInstanceLink
-  - airflow.providers.google.cloud.operators.datafusion.DataFusionPipelineLink
-  - airflow.providers.google.cloud.operators.datafusion.DataFusionPipelinesLink
+  - airflow.providers.google.cloud.links.dataform.DataformRepositoryLink
+  - airflow.providers.google.cloud.links.dataform.DataformWorkspaceLink
+  - airflow.providers.google.cloud.links.dataform.DataformWorkflowInvocationLink
+  - airflow.providers.google.cloud.links.datafusion.DataFusionInstanceLink
+  - airflow.providers.google.cloud.links.datafusion.DataFusionPipelineLink
+  - airflow.providers.google.cloud.links.datafusion.DataFusionPipelinesLink
   - airflow.providers.google.cloud.links.cloud_sql.CloudSQLInstanceLink
   - airflow.providers.google.cloud.links.cloud_sql.CloudSQLInstanceDatabaseLink
   - airflow.providers.google.cloud.links.dataplex.DataplexTaskLink
   - airflow.providers.google.cloud.links.dataplex.DataplexTasksLink
+  - airflow.providers.google.cloud.links.dataplex.DataplexLakeLink
   - airflow.providers.google.cloud.links.bigquery.BigQueryDatasetLink
   - airflow.providers.google.cloud.links.bigquery.BigQueryTableLink
   - airflow.providers.google.cloud.links.bigquery_dts.BigQueryDataTransferConfigLink
+  - airflow.providers.google.cloud.links.compute.ComputeInstanceDetailsLink
+  - airflow.providers.google.cloud.links.compute.ComputeInstanceTemplateDetailsLink
+  - airflow.providers.google.cloud.links.compute.ComputeInstanceGroupManagerDetailsLink
   - airflow.providers.google.cloud.links.cloud_tasks.CloudTasksQueueLink
   - airflow.providers.google.cloud.links.cloud_tasks.CloudTasksLink
+  - airflow.providers.google.cloud.links.datacatalog.DataCatalogEntryGroupLink
+  - airflow.providers.google.cloud.links.datacatalog.DataCatalogEntryLink
+  - airflow.providers.google.cloud.links.datacatalog.DataCatalogTagTemplateLink
   - airflow.providers.google.cloud.links.dataproc.DataprocLink
   - airflow.providers.google.cloud.links.dataproc.DataprocListLink
+  - airflow.providers.google.cloud.links.dataproc.DataprocClusterLink
+  - airflow.providers.google.cloud.links.dataproc.DataprocJobLink
+  - airflow.providers.google.cloud.links.dataproc.DataprocWorkflowLink
+  - airflow.providers.google.cloud.links.dataproc.DataprocWorkflowTemplateLink
+  - airflow.providers.google.cloud.links.dataproc.DataprocBatchLink
+  - airflow.providers.google.cloud.links.dataproc.DataprocBatchesListLink
   - airflow.providers.google.cloud.operators.dataproc_metastore.DataprocMetastoreDetailedLink
   - airflow.providers.google.cloud.operators.dataproc_metastore.DataprocMetastoreLink
+  - airflow.providers.google.cloud.links.dataprep.DataprepFlowLink
+  - airflow.providers.google.cloud.links.dataprep.DataprepJobGroupLink
   - airflow.providers.google.cloud.links.vertex_ai.VertexAIModelLink
   - airflow.providers.google.cloud.links.vertex_ai.VertexAIModelListLink
   - airflow.providers.google.cloud.links.vertex_ai.VertexAIModelExportLink
@@ -956,6 +1190,8 @@ extra-links:
   - airflow.providers.google.cloud.links.vertex_ai.VertexAIBatchPredictionJobListLink
   - airflow.providers.google.cloud.links.vertex_ai.VertexAIEndpointLink
   - airflow.providers.google.cloud.links.vertex_ai.VertexAIEndpointListLink
+  - airflow.providers.google.cloud.links.vertex_ai.VertexAIPipelineJobLink
+  - airflow.providers.google.cloud.links.vertex_ai.VertexAIPipelineJobListLink
   - airflow.providers.google.cloud.links.workflows.WorkflowsWorkflowDetailsLink
   - airflow.providers.google.cloud.links.workflows.WorkflowsListOfWorkflowsLink
   - airflow.providers.google.cloud.links.workflows.WorkflowsExecutionLink
@@ -971,25 +1207,49 @@ extra-links:
   - airflow.providers.google.cloud.links.spanner.SpannerInstanceLink
   - airflow.providers.google.cloud.links.stackdriver.StackdriverNotificationsLink
   - airflow.providers.google.cloud.links.stackdriver.StackdriverPoliciesLink
+  - airflow.providers.google.cloud.links.kubernetes_engine.KubernetesEngineClusterLink
+  - airflow.providers.google.cloud.links.kubernetes_engine.KubernetesEnginePodLink
+  - airflow.providers.google.cloud.links.kubernetes_engine.KubernetesEngineJobLink
+  - airflow.providers.google.cloud.links.pubsub.PubSubSubscriptionLink
+  - airflow.providers.google.cloud.links.pubsub.PubSubTopicLink
+  - airflow.providers.google.cloud.links.cloud_memorystore.MemcachedInstanceDetailsLink
+  - airflow.providers.google.cloud.links.cloud_memorystore.MemcachedInstanceListLink
+  - airflow.providers.google.cloud.links.cloud_memorystore.RedisInstanceDetailsLink
+  - airflow.providers.google.cloud.links.cloud_memorystore.RedisInstanceListLink
+  - airflow.providers.google.cloud.links.cloud_build.CloudBuildLink
+  - airflow.providers.google.cloud.links.cloud_build.CloudBuildListLink
+  - airflow.providers.google.cloud.links.cloud_build.CloudBuildTriggersListLink
+  - airflow.providers.google.cloud.links.cloud_build.CloudBuildTriggerDetailsLink
+  - airflow.providers.google.cloud.links.automl.AutoMLDatasetLink
+  - airflow.providers.google.cloud.links.automl.AutoMLDatasetListLink
+  - airflow.providers.google.cloud.links.automl.AutoMLModelLink
+  - airflow.providers.google.cloud.links.automl.AutoMLModelTrainLink
+  - airflow.providers.google.cloud.links.automl.AutoMLModelPredictLink
+  - airflow.providers.google.cloud.links.life_sciences.LifeSciencesLink
+  - airflow.providers.google.cloud.links.cloud_functions.CloudFunctionsDetailsLink
+  - airflow.providers.google.cloud.links.cloud_functions.CloudFunctionsListLink
+  - airflow.providers.google.cloud.links.cloud_storage_transfer.CloudStorageTransferListLink
+  - airflow.providers.google.cloud.links.cloud_storage_transfer.CloudStorageTransferJobLink
+  - airflow.providers.google.cloud.links.cloud_storage_transfer.CloudStorageTransferDetailsLink
+  - airflow.providers.google.cloud.links.data_loss_prevention.CloudDLPDeidentifyTemplatesListLink
+  - airflow.providers.google.cloud.links.data_loss_prevention.CloudDLPDeidentifyTemplateDetailsLink
+  - airflow.providers.google.cloud.links.data_loss_prevention.CloudDLPJobTriggersListLink
+  - airflow.providers.google.cloud.links.data_loss_prevention.CloudDLPJobTriggerDetailsLink
+  - airflow.providers.google.cloud.links.data_loss_prevention.CloudDLPJobsListLink
+  - airflow.providers.google.cloud.links.data_loss_prevention.CloudDLPJobDetailsLink
+  - airflow.providers.google.cloud.links.data_loss_prevention.CloudDLPInspectTemplatesListLink
+  - airflow.providers.google.cloud.links.data_loss_prevention.CloudDLPInspectTemplateDetailsLink
+  - airflow.providers.google.cloud.links.data_loss_prevention.CloudDLPInfoTypesListLink
+  - airflow.providers.google.cloud.links.data_loss_prevention.CloudDLPInfoTypeDetailsLink
+  - airflow.providers.google.cloud.links.data_loss_prevention.CloudDLPPossibleInfoTypesListLink
+  - airflow.providers.google.cloud.links.mlengine.MLEngineModelLink
+  - airflow.providers.google.cloud.links.mlengine.MLEngineModelsListLink
+  - airflow.providers.google.cloud.links.mlengine.MLEngineJobDetailsLink
+  - airflow.providers.google.cloud.links.mlengine.MLEngineJobSListLink
+  - airflow.providers.google.cloud.links.mlengine.MLEngineModelVersionDetailsLink
   - airflow.providers.google.common.links.storage.StorageLink
   - airflow.providers.google.common.links.storage.FileDetailsLink
-
-additional-extras:
-  - name: apache.beam
-    dependencies:
-      - apache-beam[gcp]
-  - name: leveldb
-    dependencies:
-      - plyvel
-  - name: oracle
-    dependencies:
-      - apache-airflow-providers-oracle>=3.1.0
-  - name: facebook
-    dependencies:
-      - apache-airflow-providers-facebook>=2.2.0
-  - name: amazon
-    dependencies:
-      - apache-airflow-providers-amazon>=2.6.0
+  - airflow.providers.google.marketing_platform.links.analytics_admin.GoogleAnalyticsPropertyLink
 
 secrets-backends:
   - airflow.providers.google.cloud.secrets.secret_manager.CloudSecretManagerBackend

@@ -14,42 +14,53 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
 
-import unittest
 from unittest import mock
 
+import pytest
+
+from airflow.exceptions import AirflowException, AirflowSkipException
 from airflow.providers.amazon.aws.hooks.glue_crawler import GlueCrawlerHook
 from airflow.providers.amazon.aws.sensors.glue_crawler import GlueCrawlerSensor
 
 
-class TestGlueCrawlerSensor(unittest.TestCase):
-    def setUp(self):
+class TestGlueCrawlerSensor:
+    def setup_method(self):
         self.sensor = GlueCrawlerSensor(
-            task_id='test_glue_crawler_sensor',
-            crawler_name='aws_test_glue_crawler',
+            task_id="test_glue_crawler_sensor",
+            crawler_name="aws_test_glue_crawler",
             poke_interval=1,
             timeout=5,
-            aws_conn_id='aws_default',
+            aws_conn_id="aws_default",
         )
 
-    @mock.patch.object(GlueCrawlerHook, 'get_crawler')
+    @mock.patch.object(GlueCrawlerHook, "get_crawler")
     def test_poke_success(self, mock_get_crawler):
-        mock_get_crawler.return_value['LastCrawl']['Status'] = "SUCCEEDED"
-        self.assertFalse(self.sensor.poke({}))
-        mock_get_crawler.assert_called_once_with('aws_test_glue_crawler')
+        mock_get_crawler.return_value["LastCrawl"]["Status"] = "SUCCEEDED"
+        assert self.sensor.poke({}) is False
+        mock_get_crawler.assert_called_once_with("aws_test_glue_crawler")
 
-    @mock.patch.object(GlueCrawlerHook, 'get_crawler')
+    @mock.patch.object(GlueCrawlerHook, "get_crawler")
     def test_poke_failed(self, mock_get_crawler):
-        mock_get_crawler.return_value['LastCrawl']['Status'] = "FAILED"
-        self.assertFalse(self.sensor.poke({}))
-        mock_get_crawler.assert_called_once_with('aws_test_glue_crawler')
+        mock_get_crawler.return_value["LastCrawl"]["Status"] = "FAILED"
+        assert self.sensor.poke({}) is False
+        mock_get_crawler.assert_called_once_with("aws_test_glue_crawler")
 
-    @mock.patch.object(GlueCrawlerHook, 'get_crawler')
+    @mock.patch.object(GlueCrawlerHook, "get_crawler")
     def test_poke_cancelled(self, mock_get_crawler):
-        mock_get_crawler.return_value['LastCrawl']['Status'] = "CANCELLED"
-        self.assertFalse(self.sensor.poke({}))
-        mock_get_crawler.assert_called_once_with('aws_test_glue_crawler')
+        mock_get_crawler.return_value["LastCrawl"]["Status"] = "CANCELLED"
+        assert self.sensor.poke({}) is False
+        mock_get_crawler.assert_called_once_with("aws_test_glue_crawler")
 
-
-if __name__ == '__main__':
-    unittest.main()
+    @pytest.mark.parametrize(
+        "soft_fail, expected_exception", ((False, AirflowException), (True, AirflowSkipException))
+    )
+    @mock.patch("airflow.providers.amazon.aws.hooks.glue_crawler.GlueCrawlerHook.get_crawler")
+    def test_fail_poke(self, get_crawler, soft_fail, expected_exception):
+        self.sensor.soft_fail = soft_fail
+        crawler_status = "FAILED"
+        get_crawler.return_value = {"State": "READY", "LastCrawl": {"Status": crawler_status}}
+        message = f"Status: {crawler_status}"
+        with pytest.raises(expected_exception, match=message):
+            self.sensor.poke(context={})

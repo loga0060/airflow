@@ -14,29 +14,57 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
 
 from unittest import mock
 from unittest.mock import PropertyMock
 
 import pytest
 
+from airflow.exceptions import AirflowException
 from airflow.providers.google.ads.hooks.ads import GoogleAdsHook
 
 API_VERSION = "api_version"
-ADS_CLIENT = {"key": "value"}
+ADS_CLIENT_SERVICE_ACCOUNT = {"impersonated_email": "value", "json_key_file_path": "value"}
 SECRET = "secret"
-EXTRAS = {
-    "extra__google_cloud_platform__keyfile_dict": SECRET,
-    "google_ads_client": ADS_CLIENT,
+EXTRAS_SERVICE_ACCOUNT = {
+    "keyfile_dict": SECRET,
+    "google_ads_client": ADS_CLIENT_SERVICE_ACCOUNT,
+}
+ADS_CLIENT_DEVELOPER_TOKEN = {
+    "refresh_token": "value",
+    "client_id": "value",
+    "client_secret": "value",
+    "use_proto_plus": "value",
+}
+EXTRAS_DEVELOPER_TOKEN = {
+    "google_ads_client": ADS_CLIENT_DEVELOPER_TOKEN,
 }
 
 
-@pytest.fixture()
-def mock_hook():
+@pytest.fixture(
+    params=[EXTRAS_DEVELOPER_TOKEN, EXTRAS_SERVICE_ACCOUNT], ids=["developer_token", "service_account"]
+)
+def mock_hook(request):
     with mock.patch("airflow.hooks.base.BaseHook.get_connection") as conn:
         hook = GoogleAdsHook(api_version=API_VERSION)
-        conn.return_value.extra_dejson = EXTRAS
+        conn.return_value.extra_dejson = request.param
         yield hook
+
+
+@pytest.fixture(
+    params=[
+        {"input": EXTRAS_DEVELOPER_TOKEN, "expected_result": "developer_token"},
+        {"input": EXTRAS_SERVICE_ACCOUNT, "expected_result": "service_account"},
+        {"input": {"google_ads_client": {}}, "expected_result": AirflowException},
+    ],
+    ids=["developer_token", "service_account", "empty"],
+)
+def mock_hook_for_authentication_method(request):
+    with mock.patch("airflow.hooks.base.BaseHook.get_connection") as conn:
+        hook = GoogleAdsHook(api_version=API_VERSION)
+        conn.return_value.extra_dejson = request.param["input"]
+        yield hook, request.param["expected_result"]
 
 
 class TestGoogleAdsHook:
@@ -69,9 +97,9 @@ class TestGoogleAdsHook:
         mock_hook.search(client_ids=client_ids, query=query, page_size=2)
         for i, client_id in enumerate(client_ids):
             name, args, kwargs = service.search.mock_calls[i]
-            assert kwargs['request'].customer_id == client_id
-            assert kwargs['request'].query == query
-            assert kwargs['request'].page_size == 2
+            assert kwargs["request"]["customer_id"] == client_id
+            assert kwargs["request"]["query"] == query
+            assert kwargs["request"]["page_size"] == 2
 
     def test_extract_rows(self, mock_hook):
         iterators = [[1, 2, 3], [4, 5, 6]]
@@ -86,3 +114,13 @@ class TestGoogleAdsHook:
         result = mock_hook.list_accessible_customers()
         service.list_accessible_customers.assert_called_once_with()
         assert accounts == result
+
+    def test_determine_authentication_method(self, mock_hook_for_authentication_method):
+        mock_hook, expected_method = mock_hook_for_authentication_method
+        mock_hook._get_config()
+        if isinstance(expected_method, type) and issubclass(expected_method, Exception):
+            with pytest.raises(expected_method):
+                mock_hook._determine_authentication_method()
+        else:
+            mock_hook._determine_authentication_method()
+            assert mock_hook.authentication_method == expected_method

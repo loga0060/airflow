@@ -15,26 +15,34 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
+
 import os
+import warnings
 from contextlib import closing
 from copy import deepcopy
-from typing import Iterable, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Iterable, Union
 
 import psycopg2
 import psycopg2.extensions
 import psycopg2.extras
-from psycopg2.extensions import connection
+from deprecated import deprecated
 from psycopg2.extras import DictCursor, NamedTupleCursor, RealDictCursor
 
-from airflow.hooks.dbapi import DbApiHook
-from airflow.models.connection import Connection
+from airflow.exceptions import AirflowProviderDeprecationWarning
+from airflow.providers.common.sql.hooks.sql import DbApiHook
+
+if TYPE_CHECKING:
+    from psycopg2.extensions import connection
+
+    from airflow.models.connection import Connection
+    from airflow.providers.openlineage.sqlparser import DatabaseInfo
 
 CursorType = Union[DictCursor, RealDictCursor, NamedTupleCursor]
 
 
 class PostgresHook(DbApiHook):
-    """
-    Interact with Postgres.
+    """Interact with Postgres.
 
     You can specify ssl parameters in the extra field of your connection
     as ``{"sslmode": "require", "sslcert": "/path/to/cert.pem", etc}``.
@@ -56,57 +64,97 @@ class PostgresHook(DbApiHook):
 
     :param postgres_conn_id: The :ref:`postgres conn id <howto/connection:postgres>`
         reference to a specific postgres database.
+    :param options: Optional. Specifies command-line options to send to the server
+        at connection start. For example, setting this to ``-c search_path=myschema``
+        sets the session's value of the ``search_path`` to ``myschema``.
     """
 
-    conn_name_attr = 'postgres_conn_id'
-    default_conn_name = 'postgres_default'
-    conn_type = 'postgres'
-    hook_name = 'Postgres'
+    conn_name_attr = "postgres_conn_id"
+    default_conn_name = "postgres_default"
+    conn_type = "postgres"
+    hook_name = "Postgres"
     supports_autocommit = True
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, *args, options: str | None = None, **kwargs) -> None:
+        if "schema" in kwargs:
+            warnings.warn(
+                'The "schema" arg has been renamed to "database" as it contained the database name.'
+                'Please use "database" to set the database name.',
+                AirflowProviderDeprecationWarning,
+                stacklevel=2,
+            )
+            kwargs["database"] = kwargs["schema"]
         super().__init__(*args, **kwargs)
-        self.connection: Optional[Connection] = kwargs.pop("connection", None)
+        self.connection: Connection | None = kwargs.pop("connection", None)
         self.conn: connection = None
-        self.schema: Optional[str] = kwargs.pop("schema", None)
+        self.database: str | None = kwargs.pop("database", None)
+        self.options = options
+
+    @property
+    @deprecated(
+        reason=(
+            'The "schema" variable has been renamed to "database" as it contained the database name.'
+            'Please use "database" to get the database name.'
+        ),
+        category=AirflowProviderDeprecationWarning,
+    )
+    def schema(self):
+        return self.database
+
+    @schema.setter
+    @deprecated(
+        reason=(
+            'The "schema" variable has been renamed to "database" as it contained the database name.'
+            'Please use "database" to set the database name.'
+        ),
+        category=AirflowProviderDeprecationWarning,
+    )
+    def schema(self, value):
+        self.database = value
 
     def _get_cursor(self, raw_cursor: str) -> CursorType:
         _cursor = raw_cursor.lower()
-        if _cursor == 'dictcursor':
-            return psycopg2.extras.DictCursor
-        if _cursor == 'realdictcursor':
-            return psycopg2.extras.RealDictCursor
-        if _cursor == 'namedtuplecursor':
-            return psycopg2.extras.NamedTupleCursor
-        raise ValueError(f'Invalid cursor passed {_cursor}')
+        cursor_types = {
+            "dictcursor": psycopg2.extras.DictCursor,
+            "realdictcursor": psycopg2.extras.RealDictCursor,
+            "namedtuplecursor": psycopg2.extras.NamedTupleCursor,
+        }
+        if _cursor in cursor_types:
+            return cursor_types[_cursor]
+        else:
+            valid_cursors = ", ".join(cursor_types.keys())
+            raise ValueError(f"Invalid cursor passed {_cursor}. Valid options are: {valid_cursors}")
 
     def get_conn(self) -> connection:
-        """Establishes a connection to a postgres database."""
+        """Establish a connection to a postgres database."""
         conn_id = getattr(self, self.conn_name_attr)
         conn = deepcopy(self.connection or self.get_connection(conn_id))
 
         # check for authentication via AWS IAM
-        if conn.extra_dejson.get('iam', False):
+        if conn.extra_dejson.get("iam", False):
             conn.login, conn.password, conn.port = self.get_iam_token(conn)
 
-        conn_args = dict(
-            host=conn.host,
-            user=conn.login,
-            password=conn.password,
-            dbname=self.schema or conn.schema,
-            port=conn.port,
-        )
-        raw_cursor = conn.extra_dejson.get('cursor', False)
+        conn_args = {
+            "host": conn.host,
+            "user": conn.login,
+            "password": conn.password,
+            "dbname": self.database or conn.schema,
+            "port": conn.port,
+        }
+        raw_cursor = conn.extra_dejson.get("cursor", False)
         if raw_cursor:
-            conn_args['cursor_factory'] = self._get_cursor(raw_cursor)
+            conn_args["cursor_factory"] = self._get_cursor(raw_cursor)
+
+        if self.options:
+            conn_args["options"] = self.options
 
         for arg_name, arg_val in conn.extra_dejson.items():
             if arg_name not in [
-                'iam',
-                'redshift',
-                'cursor',
-                'cluster-identifier',
-                'aws_conn_id',
+                "iam",
+                "redshift",
+                "cursor",
+                "cluster-identifier",
+                "aws_conn_id",
             ]:
                 conn_args[arg_name] = arg_val
 
@@ -114,8 +162,8 @@ class PostgresHook(DbApiHook):
         return self.conn
 
     def copy_expert(self, sql: str, filename: str) -> None:
-        """
-        Executes SQL using psycopg2 copy_expert method.
+        """Execute SQL using psycopg2's ``copy_expert`` method.
+
         Necessary to execute COPY command without access to a superuser.
 
         Note: if this method is called with a "COPY FROM" statement and
@@ -126,37 +174,38 @@ class PostgresHook(DbApiHook):
         """
         self.log.info("Running copy expert: %s, filename: %s", sql, filename)
         if not os.path.isfile(filename):
-            with open(filename, 'w'):
+            with open(filename, "w"):
                 pass
 
-        with open(filename, 'r+') as file:
-            with closing(self.get_conn()) as conn:
-                with closing(conn.cursor()) as cur:
-                    cur.copy_expert(sql, file)
-                    file.truncate(file.tell())
-                    conn.commit()
+        with open(filename, "r+") as file, closing(self.get_conn()) as conn, closing(conn.cursor()) as cur:
+            cur.copy_expert(sql, file)
+            file.truncate(file.tell())
+            conn.commit()
 
     def get_uri(self) -> str:
-        """
-        Extract the URI from the connection.
+        """Extract the URI from the connection.
+
         :return: the extracted uri.
         """
-        uri = super().get_uri().replace("postgres://", "postgresql://")
+        conn = self.get_connection(getattr(self, self.conn_name_attr))
+        conn.schema = self.database or conn.schema
+        uri = conn.get_uri().replace("postgres://", "postgresql://")
         return uri
 
     def bulk_load(self, table: str, tmp_file: str) -> None:
-        """Loads a tab-delimited file into a database table"""
+        """Load a tab-delimited file into a database table."""
         self.copy_expert(f"COPY {table} FROM STDIN", tmp_file)
 
     def bulk_dump(self, table: str, tmp_file: str) -> None:
-        """Dumps a database table into a tab-delimited file"""
+        """Dump a database table into a tab-delimited file."""
         self.copy_expert(f"COPY {table} TO STDOUT", tmp_file)
 
     @staticmethod
-    def _serialize_cell(cell: object, conn: Optional[connection] = None) -> object:
-        """
-        Postgresql will adapt all arguments to the execute() method internally,
-        hence we return cell without any conversion.
+    def _serialize_cell(cell: object, conn: connection | None = None) -> Any:
+        """Serialize a cell.
+
+        PostgreSQL adapts all arguments to the ``execute()`` method internally,
+        hence we return the cell without any conversion.
 
         See http://initd.org/psycopg/docs/advanced.html#adapting-new-types for
         more information.
@@ -164,57 +213,56 @@ class PostgresHook(DbApiHook):
         :param cell: The cell to insert into the table
         :param conn: The database connection
         :return: The cell
-        :rtype: object
         """
         return cell
 
-    def get_iam_token(self, conn: Connection) -> Tuple[str, str, int]:
-        """
-        Uses AWSHook to retrieve a temporary password to connect to Postgres
-        or Redshift. Port is required. If none is provided, default is used for
-        each service
-        """
-        from airflow.providers.amazon.aws.hooks.base_aws import AwsBaseHook
+    def get_iam_token(self, conn: Connection) -> tuple[str, str, int]:
+        """Get the IAM token.
 
-        redshift = conn.extra_dejson.get('redshift', False)
-        aws_conn_id = conn.extra_dejson.get('aws_conn_id', 'aws_default')
-        aws_hook = AwsBaseHook(aws_conn_id, client_type='rds')
+        This uses AWSHook to retrieve a temporary password to connect to
+        Postgres or Redshift. Port is required. If none is provided, the default
+        5432 is used.
+        """
+        try:
+            from airflow.providers.amazon.aws.hooks.base_aws import AwsBaseHook
+        except ImportError:
+            from airflow.exceptions import AirflowException
+
+            raise AirflowException(
+                "apache-airflow-providers-amazon not installed, run: "
+                "pip install 'apache-airflow-providers-postgres[amazon]'."
+            )
+
+        aws_conn_id = conn.extra_dejson.get("aws_conn_id", "aws_default")
         login = conn.login
-        if conn.port is None:
-            port = 5439 if redshift else 5432
-        else:
-            port = conn.port
-        if redshift:
+        if conn.extra_dejson.get("redshift", False):
+            port = conn.port or 5439
             # Pull the custer-identifier from the beginning of the Redshift URL
             # ex. my-cluster.ccdre4hpd39h.us-east-1.redshift.amazonaws.com returns my-cluster
-            cluster_identifier = conn.extra_dejson.get('cluster-identifier', conn.host.split('.')[0])
-            session, endpoint_url = aws_hook._get_credentials(region_name=None)
-            client = session.client(
-                "redshift",
-                endpoint_url=endpoint_url,
-                config=aws_hook.config,
-                verify=aws_hook.verify,
-            )
-            cluster_creds = client.get_cluster_credentials(
-                DbUser=conn.login,
-                DbName=self.schema or conn.schema,
+            cluster_identifier = conn.extra_dejson.get("cluster-identifier", conn.host.split(".")[0])
+            redshift_client = AwsBaseHook(aws_conn_id=aws_conn_id, client_type="redshift").conn
+            # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/redshift.html#Redshift.Client.get_cluster_credentials
+            cluster_creds = redshift_client.get_cluster_credentials(
+                DbUser=login,
+                DbName=self.database or conn.schema,
                 ClusterIdentifier=cluster_identifier,
                 AutoCreate=False,
             )
-            token = cluster_creds['DbPassword']
-            login = cluster_creds['DbUser']
+            token = cluster_creds["DbPassword"]
+            login = cluster_creds["DbUser"]
         else:
-            token = aws_hook.conn.generate_db_auth_token(conn.host, port, conn.login)
+            port = conn.port or 5432
+            rds_client = AwsBaseHook(aws_conn_id=aws_conn_id, client_type="rds").conn
+            # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/rds.html#RDS.Client.generate_db_auth_token
+            token = rds_client.generate_db_auth_token(conn.host, port, conn.login)
         return login, token, port
 
-    def get_table_primary_key(self, table: str, schema: Optional[str] = "public") -> Optional[List[str]]:
-        """
-        Helper method that returns the table primary key
+    def get_table_primary_key(self, table: str, schema: str | None = "public") -> list[str] | None:
+        """Get the table's primary key.
 
         :param table: Name of the target table
         :param schema: Name of the target schema, public by default
         :return: Primary key columns list
-        :rtype: List[str]
         """
         sql = """
             select kcu.column_name
@@ -230,13 +278,12 @@ class PostgresHook(DbApiHook):
         pk_columns = [row[0] for row in self.get_records(sql, (schema, table))]
         return pk_columns or None
 
-    @staticmethod
     def _generate_insert_sql(
-        table: str, values: Tuple[str, ...], target_fields: Iterable[str], replace: bool, **kwargs
+        self, table: str, values: tuple[str, ...], target_fields: Iterable[str], replace: bool, **kwargs
     ) -> str:
-        """
-        Static helper method that generates the INSERT SQL statement.
-        The REPLACE variant is specific to PostgreSQL syntax.
+        """Generate the INSERT SQL statement.
+
+        The REPLACE variant is specific to the PostgreSQL syntax.
 
         :param table: Name of the target table
         :param values: The row to insert into the table
@@ -245,10 +292,9 @@ class PostgresHook(DbApiHook):
         :param replace_index: the column or list of column names to act as
             index for the ON CONFLICT clause
         :return: The generated INSERT or REPLACE SQL statement
-        :rtype: str
         """
         placeholders = [
-            "%s",
+            self.placeholder,
         ] * len(values)
         replace_index = kwargs.get("replace_index")
 
@@ -256,21 +302,79 @@ class PostgresHook(DbApiHook):
             target_fields_fragment = ", ".join(target_fields)
             target_fields_fragment = f"({target_fields_fragment})"
         else:
-            target_fields_fragment = ''
+            target_fields_fragment = ""
 
         sql = f"INSERT INTO {table} {target_fields_fragment} VALUES ({','.join(placeholders)})"
 
         if replace:
-            if target_fields is None:
+            if not target_fields:
                 raise ValueError("PostgreSQL ON CONFLICT upsert syntax requires column names")
-            if replace_index is None:
+            if not replace_index:
                 raise ValueError("PostgreSQL ON CONFLICT upsert syntax requires an unique index")
             if isinstance(replace_index, str):
                 replace_index = [replace_index]
-            replace_index_set = set(replace_index)
 
-            replace_target = [
-                "{0} = excluded.{0}".format(col) for col in target_fields if col not in replace_index_set
-            ]
-            sql += f" ON CONFLICT ({', '.join(replace_index)}) DO UPDATE SET {', '.join(replace_target)}"
+            on_conflict_str = f" ON CONFLICT ({', '.join(replace_index)})"
+            replace_target = [f for f in target_fields if f not in replace_index]
+
+            if replace_target:
+                replace_target_str = ", ".join(f"{col} = excluded.{col}" for col in replace_target)
+                sql += f"{on_conflict_str} DO UPDATE SET {replace_target_str}"
+            else:
+                sql += f"{on_conflict_str} DO NOTHING"
+
         return sql
+
+    def get_openlineage_database_info(self, connection) -> DatabaseInfo:
+        """Return Postgres/Redshift specific information for OpenLineage."""
+        from airflow.providers.openlineage.sqlparser import DatabaseInfo
+
+        is_redshift = connection.extra_dejson.get("redshift", False)
+
+        if is_redshift:
+            authority = self._get_openlineage_redshift_authority_part(connection)
+        else:
+            authority = DbApiHook.get_openlineage_authority_part(  # type: ignore[attr-defined]
+                connection, default_port=5432
+            )
+
+        return DatabaseInfo(
+            scheme="postgres" if not is_redshift else "redshift",
+            authority=authority,
+            database=self.database or connection.schema,
+        )
+
+    def _get_openlineage_redshift_authority_part(self, connection) -> str:
+        try:
+            from airflow.providers.amazon.aws.hooks.base_aws import AwsBaseHook
+        except ImportError:
+            from airflow.exceptions import AirflowException
+
+            raise AirflowException(
+                "apache-airflow-providers-amazon not installed, run: "
+                "pip install 'apache-airflow-providers-postgres[amazon]'."
+            )
+        aws_conn_id = connection.extra_dejson.get("aws_conn_id", "aws_default")
+
+        port = connection.port or 5439
+        cluster_identifier = connection.extra_dejson.get("cluster-identifier", connection.host.split(".")[0])
+        region_name = AwsBaseHook(aws_conn_id=aws_conn_id).region_name
+
+        return f"{cluster_identifier}.{region_name}:{port}"
+
+    def get_openlineage_database_dialect(self, connection) -> str:
+        """Return postgres/redshift dialect."""
+        return "redshift" if connection.extra_dejson.get("redshift", False) else "postgres"
+
+    def get_openlineage_default_schema(self) -> str | None:
+        """Return current schema. This is usually changed with ``SEARCH_PATH`` parameter."""
+        return self.get_first("SELECT CURRENT_SCHEMA;")[0]
+
+    @classmethod
+    def get_ui_field_behaviour(cls) -> dict[str, Any]:
+        return {
+            "hidden_fields": [],
+            "relabeling": {
+                "schema": "Database",
+            },
+        }

@@ -15,14 +15,15 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-
 """
 Example Airflow DAG for Google BigQuery service testing dataset operations.
 """
+from __future__ import annotations
+
 import os
 from datetime import datetime
 
-from airflow import models
+from airflow.models.dag import DAG
 from airflow.operators.bash import BashOperator
 from airflow.providers.google.cloud.operators.bigquery import (
     BigQueryCreateEmptyDatasetOperator,
@@ -38,9 +39,9 @@ DAG_ID = "bigquery_dataset"
 DATASET_NAME = f"dataset_{DAG_ID}_{ENV_ID}"
 
 
-with models.DAG(
+with DAG(
     DAG_ID,
-    schedule_interval="@once",
+    schedule="@once",
     start_date=datetime(2021, 1, 1),
     catchup=False,
     tags=["example", "bigquery"],

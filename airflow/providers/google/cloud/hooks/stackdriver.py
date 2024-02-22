@@ -15,15 +15,15 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-
 """This module contains Google Cloud Stackdriver operators."""
+from __future__ import annotations
 
+import contextlib
 import json
-from typing import Any, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, Any, Sequence
 
 from google.api_core.exceptions import InvalidArgument
 from google.api_core.gapic_v1.method import DEFAULT, _MethodDefault
-from google.api_core.retry import Retry
 from google.cloud import monitoring_v3
 from google.cloud.monitoring_v3 import AlertPolicy, NotificationChannel
 from google.protobuf.field_mask_pb2 import FieldMask
@@ -32,19 +32,26 @@ from googleapiclient.errors import HttpError
 from airflow.exceptions import AirflowException
 from airflow.providers.google.common.hooks.base_google import PROVIDE_PROJECT_ID, GoogleBaseHook
 
+if TYPE_CHECKING:
+    from google.api_core.retry import Retry
+
 
 class StackdriverHook(GoogleBaseHook):
-    """Stackdriver Hook for connecting with Google Cloud Stackdriver"""
+    """Stackdriver Hook for connecting with Google Cloud Stackdriver."""
 
     def __init__(
         self,
         gcp_conn_id: str = "google_cloud_default",
-        delegate_to: Optional[str] = None,
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
+        impersonation_chain: str | Sequence[str] | None = None,
+        **kwargs,
     ) -> None:
+        if kwargs.get("delegate_to") is not None:
+            raise RuntimeError(
+                "The `delegate_to` parameter has been deprecated before and finally removed in this version"
+                " of Google Provider. You MUST convert it to `impersonate_chain`"
+            )
         super().__init__(
             gcp_conn_id=gcp_conn_id,
-            delegate_to=delegate_to,
             impersonation_chain=impersonation_chain,
         )
         self._policy_client = None
@@ -64,19 +71,19 @@ class StackdriverHook(GoogleBaseHook):
     def list_alert_policies(
         self,
         project_id: str = PROVIDE_PROJECT_ID,
-        format_: Optional[str] = None,
-        filter_: Optional[str] = None,
-        order_by: Optional[str] = None,
-        page_size: Optional[int] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        format_: str | None = None,
+        filter_: str | None = None,
+        order_by: str | None = None,
+        page_size: int | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> Any:
         """
-        Fetches all the Alert Policies identified by the filter passed as
-        filter parameter. The desired return type can be specified by the
-        format parameter, the supported formats are "dict", "json" and None
-        which returns python dictionary, stringified JSON and protobuf
+        Fetch all the Alert Policies identified by the filter passed as filter parameter.
+
+        The desired return type can be specified by the format parameter, the supported formats
+        are "dict", "json" and None which returns python dictionary, stringified JSON and protobuf
         respectively.
 
         :param format_: (Optional) Desired output format of the result. The
@@ -105,10 +112,10 @@ class StackdriverHook(GoogleBaseHook):
         client = self._get_policy_client()
         policies_ = client.list_alert_policies(
             request={
-                'name': f'projects/{project_id}',
-                'filter': filter_,
-                'order_by': order_by,
-                'page_size': page_size,
+                "name": f"projects/{project_id}",
+                "filter": filter_,
+                "order_by": order_by,
+                "page_size": page_size,
             },
             retry=retry,
             timeout=timeout,
@@ -126,19 +133,19 @@ class StackdriverHook(GoogleBaseHook):
         self,
         new_state: bool,
         project_id: str = PROVIDE_PROJECT_ID,
-        filter_: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        filter_: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ):
         client = self._get_policy_client()
         policies_ = self.list_alert_policies(project_id=project_id, filter_=filter_)
         for policy in policies_:
             if policy.enabled != bool(new_state):
                 policy.enabled = bool(new_state)
-                mask = FieldMask(paths=['enabled'])
+                mask = FieldMask(paths=["enabled"])
                 client.update_alert_policy(
-                    request={'alert_policy': policy, 'update_mask': mask},
+                    request={"alert_policy": policy, "update_mask": mask},
                     retry=retry,
                     timeout=timeout,
                     metadata=metadata,
@@ -148,14 +155,15 @@ class StackdriverHook(GoogleBaseHook):
     def enable_alert_policies(
         self,
         project_id: str = PROVIDE_PROJECT_ID,
-        filter_: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        filter_: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> None:
         """
-        Enables one or more disabled alerting policies identified by filter
-        parameter. Inoperative in case the policy is already enabled.
+        Enable one or more disabled alerting policies identified by filter parameter.
+
+        Inoperative in case the policy is already enabled.
 
         :param project_id: The project in which alert needs to be enabled.
         :param filter_:  If provided, this field specifies the criteria that
@@ -181,14 +189,15 @@ class StackdriverHook(GoogleBaseHook):
     def disable_alert_policies(
         self,
         project_id: str = PROVIDE_PROJECT_ID,
-        filter_: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        filter_: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> None:
         """
-        Disables one or more enabled alerting policies identified by filter
-        parameter. Inoperative in case the policy is already disabled.
+        Disables one or more enabled alerting policies identified by filter parameter.
+
+        Inoperative in case the policy is already disabled.
 
         :param project_id: The project in which alert needs to be disabled.
         :param filter_:  If provided, this field specifies the criteria that
@@ -215,13 +224,12 @@ class StackdriverHook(GoogleBaseHook):
         self,
         alerts: str,
         project_id: str = PROVIDE_PROJECT_ID,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> None:
         """
-         Creates a new alert or updates an existing policy identified
-         the name field in the alerts parameter.
+         Create a new alert or updates an existing policy identified the name field in the alerts parameter.
 
         :param project_id: The project in which alert needs to be created/updated.
         :param alerts: A JSON string or file that specifies all the alerts that needs
@@ -240,11 +248,11 @@ class StackdriverHook(GoogleBaseHook):
 
         record = json.loads(alerts)
         existing_policies = [
-            policy['name'] for policy in self.list_alert_policies(project_id=project_id, format_='dict')
+            policy["name"] for policy in self.list_alert_policies(project_id=project_id, format_="dict")
         ]
         existing_channels = [
-            channel['name']
-            for channel in self.list_notification_channels(project_id=project_id, format_='dict')
+            channel["name"]
+            for channel in self.list_notification_channels(project_id=project_id, format_="dict")
         ]
         policies_ = []
         channels = []
@@ -262,7 +270,7 @@ class StackdriverHook(GoogleBaseHook):
 
             if channel.name in existing_channels:
                 channel_client.update_notification_channel(
-                    request={'notification_channel': channel},
+                    request={"notification_channel": channel},
                     retry=retry,
                     timeout=timeout,
                     metadata=metadata,
@@ -271,7 +279,7 @@ class StackdriverHook(GoogleBaseHook):
                 old_name = channel.name
                 channel.name = None
                 new_channel = channel_client.create_notification_channel(
-                    request={'name': f'projects/{project_id}', 'notification_channel': channel},
+                    request={"name": f"projects/{project_id}", "notification_channel": channel},
                     retry=retry,
                     timeout=timeout,
                     metadata=metadata,
@@ -288,21 +296,19 @@ class StackdriverHook(GoogleBaseHook):
                     policy.notification_channels[i] = new_channel
 
             if policy.name in existing_policies:
-                try:
+                with contextlib.suppress(InvalidArgument):
                     policy_client.update_alert_policy(
-                        request={'alert_policy': policy},
+                        request={"alert_policy": policy},
                         retry=retry,
                         timeout=timeout,
                         metadata=metadata,
                     )
-                except InvalidArgument:
-                    pass
             else:
                 policy.name = None
                 for condition in policy.conditions:
                     condition.name = None
                 policy_client.create_alert_policy(
-                    request={'name': f'projects/{project_id}', 'alert_policy': policy},
+                    request={"name": f"projects/{project_id}", "alert_policy": policy},
                     retry=retry,
                     timeout=timeout,
                     metadata=metadata,
@@ -311,12 +317,12 @@ class StackdriverHook(GoogleBaseHook):
     def delete_alert_policy(
         self,
         name: str,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> None:
         """
-        Deletes an alerting policy.
+        Delete an alerting policy.
 
         :param name: The alerting policy to delete. The format is:
                          ``projects/[PROJECT_ID]/alertPolicies/[ALERT_POLICY_ID]``.
@@ -330,28 +336,28 @@ class StackdriverHook(GoogleBaseHook):
         policy_client = self._get_policy_client()
         try:
             policy_client.delete_alert_policy(
-                request={'name': name}, retry=retry, timeout=timeout, metadata=metadata or ()
+                request={"name": name}, retry=retry, timeout=timeout, metadata=metadata or ()
             )
         except HttpError as err:
-            raise AirflowException(f'Delete alerting policy failed. Error was {err.content}')
+            raise AirflowException(f"Delete alerting policy failed. Error was {err.content}")
 
     @GoogleBaseHook.fallback_to_default_project_id
     def list_notification_channels(
         self,
         project_id: str = PROVIDE_PROJECT_ID,
-        format_: Optional[str] = None,
-        filter_: Optional[str] = None,
-        order_by: Optional[str] = None,
-        page_size: Optional[int] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        format_: str | None = None,
+        filter_: str | None = None,
+        order_by: str | None = None,
+        page_size: int | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> Any:
         """
-        Fetches all the Notification Channels identified by the filter passed as
-        filter parameter. The desired return type can be specified by the
-        format parameter, the supported formats are "dict", "json" and None
-        which returns python dictionary, stringified JSON and protobuf
+        Fetch all the Notification Channels identified by the filter passed as filter parameter.
+
+        The desired return type can be specified by the format parameter, the supported formats are
+        "dict", "json" and None which returns python dictionary, stringified JSON and protobuf
         respectively.
 
         :param format_: (Optional) Desired output format of the result. The
@@ -380,10 +386,10 @@ class StackdriverHook(GoogleBaseHook):
         client = self._get_channel_client()
         channels = client.list_notification_channels(
             request={
-                'name': f'projects/{project_id}',
-                'filter': filter_,
-                'order_by': order_by,
-                'page_size': page_size,
+                "name": f"projects/{project_id}",
+                "filter": filter_,
+                "order_by": order_by,
+                "page_size": page_size,
             },
             retry=retry,
             timeout=timeout,
@@ -401,21 +407,21 @@ class StackdriverHook(GoogleBaseHook):
         self,
         new_state: bool,
         project_id: str = PROVIDE_PROJECT_ID,
-        filter_: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        filter_: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> None:
         client = self._get_channel_client()
         channels = client.list_notification_channels(
-            request={'name': f'projects/{project_id}', 'filter': filter_}
+            request={"name": f"projects/{project_id}", "filter": filter_}
         )
         for channel in channels:
             if channel.enabled != bool(new_state):
                 channel.enabled = bool(new_state)
-                mask = FieldMask(paths=['enabled'])
+                mask = FieldMask(paths=["enabled"])
                 client.update_notification_channel(
-                    request={'notification_channel': channel, 'update_mask': mask},
+                    request={"notification_channel": channel, "update_mask": mask},
                     retry=retry,
                     timeout=timeout,
                     metadata=metadata,
@@ -425,14 +431,15 @@ class StackdriverHook(GoogleBaseHook):
     def enable_notification_channels(
         self,
         project_id: str = PROVIDE_PROJECT_ID,
-        filter_: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        filter_: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> None:
         """
-        Enables one or more disabled alerting policies identified by filter
-        parameter. Inoperative in case the policy is already enabled.
+        Enable one or more disabled alerting policies identified by filter parameter.
+
+        Inoperative in case the policy is already enabled.
 
         :param project_id: The project in which notification channels needs to be enabled.
         :param filter_:  If provided, this field specifies the criteria that
@@ -458,14 +465,15 @@ class StackdriverHook(GoogleBaseHook):
     def disable_notification_channels(
         self,
         project_id: str,
-        filter_: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        filter_: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> None:
         """
-        Disables one or more enabled notification channels identified by filter
-        parameter. Inoperative in case the policy is already disabled.
+        Disables one or more enabled notification channels identified by filter parameter.
+
+        Inoperative in case the policy is already disabled.
 
         :param project_id: The project in which notification channels needs to be enabled.
         :param filter_:  If provided, this field specifies the criteria that
@@ -492,13 +500,14 @@ class StackdriverHook(GoogleBaseHook):
         self,
         channels: str,
         project_id: str,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> dict:
         """
-        Creates a new notification or updates an existing notification channel
-        identified the name field in the alerts parameter.
+        Create a new notification or updates an existing notification channel.
+
+        Channel is identified by the name field in the alerts parameter.
 
         :param channels: A JSON string or file that specifies all the alerts that needs
             to be either created or updated. For more details, see
@@ -532,7 +541,7 @@ class StackdriverHook(GoogleBaseHook):
 
             if channel.name in existing_channels:
                 channel_client.update_notification_channel(
-                    request={'notification_channel': channel},
+                    request={"notification_channel": channel},
                     retry=retry,
                     timeout=timeout,
                     metadata=metadata,
@@ -541,7 +550,7 @@ class StackdriverHook(GoogleBaseHook):
                 old_name = channel.name
                 channel.name = None
                 new_channel = channel_client.create_notification_channel(
-                    request={'name': f'projects/{project_id}', 'notification_channel': channel},
+                    request={"name": f"projects/{project_id}", "notification_channel": channel},
                     retry=retry,
                     timeout=timeout,
                     metadata=metadata,
@@ -553,12 +562,12 @@ class StackdriverHook(GoogleBaseHook):
     def delete_notification_channel(
         self,
         name: str,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> None:
         """
-        Deletes a notification channel.
+        Delete a notification channel.
 
         :param name: The alerting policy to delete. The format is:
                          ``projects/[PROJECT_ID]/notificationChannels/[CHANNEL_ID]``.
@@ -572,7 +581,7 @@ class StackdriverHook(GoogleBaseHook):
         channel_client = self._get_channel_client()
         try:
             channel_client.delete_notification_channel(
-                request={'name': name}, retry=retry, timeout=timeout, metadata=metadata or ()
+                request={"name": name}, retry=retry, timeout=timeout, metadata=metadata or ()
             )
         except HttpError as err:
-            raise AirflowException(f'Delete notification channel failed. Error was {err.content}')
+            raise AirflowException(f"Delete notification channel failed. Error was {err.content}")

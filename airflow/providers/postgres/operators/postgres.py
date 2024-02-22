@@ -15,21 +15,31 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-from typing import TYPE_CHECKING, Iterable, List, Mapping, Optional, Sequence, Union
+from __future__ import annotations
 
-from psycopg2.sql import SQL, Identifier
+import warnings
+from typing import Mapping
 
-from airflow.models import BaseOperator
-from airflow.providers.postgres.hooks.postgres import PostgresHook
-from airflow.www import utils as wwwutils
+from deprecated import deprecated
 
-if TYPE_CHECKING:
-    from airflow.utils.context import Context
+from airflow.exceptions import AirflowProviderDeprecationWarning
+from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 
 
-class PostgresOperator(BaseOperator):
+@deprecated(
+    reason=(
+        "Please use `airflow.providers.common.sql.operators.sql.SQLExecuteQueryOperator`."
+        "Also, you can provide `hook_params={'schema': <database>}`."
+    ),
+    category=AirflowProviderDeprecationWarning,
+)
+class PostgresOperator(SQLExecuteQueryOperator):
     """
-    Executes sql code in a specific Postgres database
+    Executes sql code in a specific Postgres database.
+
+    This class is deprecated.
+
+    Please use :class:`airflow.providers.common.sql.operators.sql.SQLExecuteQueryOperator`.
 
     :param sql: the SQL code to be executed as a single string, or
         a list of str (sql statements), or a reference to a template file.
@@ -40,55 +50,35 @@ class PostgresOperator(BaseOperator):
         (default value: False)
     :param parameters: (optional) the parameters to render the SQL query with.
     :param database: name of database which overwrite defined one in connection
+    :param runtime_parameters: a mapping of runtime params added to the final sql being executed.
+        For example, you could set the schema via `{"search_path": "CUSTOM_SCHEMA"}`.
+        Deprecated - use `hook_params={'options': '-c <connection_options>'}` instead.
     """
 
-    template_fields: Sequence[str] = ('sql',)
-    # TODO: Remove renderer check when the provider has an Airflow 2.3+ requirement.
-    template_fields_renderers = {
-        'sql': 'postgresql' if 'postgresql' in wwwutils.get_attr_renderer() else 'sql'
-    }
-    template_ext: Sequence[str] = ('.sql',)
-    ui_color = '#ededed'
+    template_fields_renderers = {**SQLExecuteQueryOperator.template_fields_renderers, "sql": "postgresql"}
+    ui_color = "#ededed"
 
     def __init__(
         self,
         *,
-        sql: Union[str, List[str]],
-        postgres_conn_id: str = 'postgres_default',
-        autocommit: bool = False,
-        parameters: Optional[Union[Mapping, Iterable]] = None,
-        database: Optional[str] = None,
-        runtime_parameters: Optional[Mapping] = None,
+        postgres_conn_id: str = "postgres_default",
+        database: str | None = None,
+        runtime_parameters: Mapping | None = None,
         **kwargs,
     ) -> None:
-        super().__init__(**kwargs)
-        self.sql = sql
-        self.postgres_conn_id = postgres_conn_id
-        self.autocommit = autocommit
-        self.parameters = parameters
-        self.database = database
-        self.runtime_parameters = runtime_parameters
-        self.hook: Optional[PostgresHook] = None
+        if database is not None:
+            hook_params = kwargs.pop("hook_params", {})
+            kwargs["hook_params"] = {"schema": database, **hook_params}
 
-    def execute(self, context: 'Context'):
-        self.hook = PostgresHook(postgres_conn_id=self.postgres_conn_id, schema=self.database)
-        if self.runtime_parameters:
-            final_sql = []
-            sql_param = {}
-            for param in self.runtime_parameters:
-                set_param_sql = f"SET {{}} TO %({param})s;"
-                dynamic_sql = SQL(set_param_sql).format(Identifier(f"{param}"))
-                final_sql.append(dynamic_sql)
-            for param, val in self.runtime_parameters.items():
-                sql_param.update({f"{param}": f"{val}"})
-            if self.parameters:
-                sql_param.update(self.parameters)
-            if isinstance(self.sql, str):
-                final_sql.append(SQL(self.sql))
-            else:
-                final_sql.extend(list(map(SQL, self.sql)))
-            self.hook.run(final_sql, self.autocommit, parameters=sql_param)
-        else:
-            self.hook.run(self.sql, self.autocommit, parameters=self.parameters)
-        for output in self.hook.conn.notices:
-            self.log.info(output)
+        if runtime_parameters:
+            warnings.warn(
+                """`runtime_parameters` is deprecated.
+                Please use `hook_params={'options': '-c <connection_options>}`.""",
+                AirflowProviderDeprecationWarning,
+                stacklevel=2,
+            )
+            hook_params = kwargs.pop("hook_params", {})
+            options = " ".join(f"-c {param}={val}" for param, val in runtime_parameters.items())
+            kwargs["hook_params"] = {"options": options, **hook_params}
+
+        super().__init__(conn_id=postgres_conn_id, **kwargs)

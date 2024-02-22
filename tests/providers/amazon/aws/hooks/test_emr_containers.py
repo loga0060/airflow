@@ -15,52 +15,76 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-#
+from __future__ import annotations
 
-import unittest
 from unittest import mock
+
+import pytest
 
 from airflow.providers.amazon.aws.hooks.emr import EmrContainerHook
 
 SUBMIT_JOB_SUCCESS_RETURN = {
-    'ResponseMetadata': {'HTTPStatusCode': 200},
-    'id': 'job123456',
-    'virtualClusterId': 'vc1234',
+    "ResponseMetadata": {"HTTPStatusCode": 200},
+    "id": "job123456",
+    "virtualClusterId": "vc1234",
 }
 
+CREATE_EMR_ON_EKS_CLUSTER_RETURN = {"ResponseMetadata": {"HTTPStatusCode": 200}, "id": "vc1234"}
+
 JOB1_RUN_DESCRIPTION = {
-    'jobRun': {
-        'id': 'job123456',
-        'virtualClusterId': 'vc1234',
-        'state': 'COMPLETED',
+    "jobRun": {
+        "id": "job123456",
+        "virtualClusterId": "vc1234",
+        "state": "COMPLETED",
     }
 }
 
 JOB2_RUN_DESCRIPTION = {
-    'jobRun': {
-        'id': 'job123456',
-        'virtualClusterId': 'vc1234',
-        'state': 'RUNNING',
+    "jobRun": {
+        "id": "job123456",
+        "virtualClusterId": "vc1234",
+        "state": "RUNNING",
     }
 }
 
 
-class TestEmrContainerHook(unittest.TestCase):
-    def setUp(self):
-        self.emr_containers = EmrContainerHook(virtual_cluster_id='vc1234')
+@pytest.fixture
+def mocked_hook_client():
+    with mock.patch("airflow.providers.amazon.aws.hooks.base_aws.AwsGenericHook.conn") as m:
+        yield m
+
+
+class TestEmrContainerHook:
+    def setup_method(self):
+        self.emr_containers = EmrContainerHook(virtual_cluster_id="vc1234")
 
     def test_init(self):
-        assert self.emr_containers.aws_conn_id == 'aws_default'
-        assert self.emr_containers.virtual_cluster_id == 'vc1234'
+        assert self.emr_containers.aws_conn_id == "aws_default"
+        assert self.emr_containers.virtual_cluster_id == "vc1234"
 
-    @mock.patch("boto3.session.Session")
-    def test_submit_job(self, mock_session):
+    def test_create_emr_on_eks_cluster(self, mocked_hook_client):
+        mocked_hook_client.create_virtual_cluster.return_value = CREATE_EMR_ON_EKS_CLUSTER_RETURN
+
+        emr_on_eks_create_cluster_response = self.emr_containers.create_emr_on_eks_cluster(
+            virtual_cluster_name="test_virtual_cluster",
+            eks_cluster_name="test_eks_cluster",
+            eks_namespace="test_eks_namespace",
+        )
+        assert emr_on_eks_create_cluster_response == "vc1234"
+
+        mocked_hook_client.create_virtual_cluster.assert_called_once_with(
+            name="test_virtual_cluster",
+            containerProvider={
+                "id": "test_eks_cluster",
+                "type": "EKS",
+                "info": {"eksInfo": {"namespace": "test_eks_namespace"}},
+            },
+            tags={},
+        )
+
+    def test_submit_job(self, mocked_hook_client):
         # Mock out the emr_client creator
-        emr_client_mock = mock.MagicMock()
-        emr_client_mock.start_job_run.return_value = SUBMIT_JOB_SUCCESS_RETURN
-        emr_session_mock = mock.MagicMock()
-        emr_session_mock.client.return_value = emr_client_mock
-        mock_session.return_value = emr_session_mock
+        mocked_hook_client.start_job_run.return_value = SUBMIT_JOB_SUCCESS_RETURN
 
         emr_containers_job = self.emr_containers.submit_job(
             name="test-job-run",
@@ -70,30 +94,32 @@ class TestEmrContainerHook(unittest.TestCase):
             configuration_overrides={},
             client_request_token="uuidtoken",
         )
-        assert emr_containers_job == 'job123456'
+        assert emr_containers_job == "job123456"
 
-    @mock.patch("boto3.session.Session")
-    def test_query_status_polling_when_terminal(self, mock_session):
-        emr_client_mock = mock.MagicMock()
-        emr_session_mock = mock.MagicMock()
-        emr_session_mock.client.return_value = emr_client_mock
-        mock_session.return_value = emr_session_mock
-        emr_client_mock.describe_job_run.return_value = JOB1_RUN_DESCRIPTION
+        mocked_hook_client.start_job_run.assert_called_once_with(
+            name="test-job-run",
+            virtualClusterId="vc1234",
+            executionRoleArn="arn:aws:somerole",
+            releaseLabel="emr-6.3.0-latest",
+            jobDriver={},
+            configurationOverrides={},
+            tags={},
+            clientToken="uuidtoken",
+        )
 
-        query_status = self.emr_containers.poll_query_status(job_id='job123456')
+    def test_query_status_polling_when_terminal(self, mocked_hook_client):
+        mocked_hook_client.describe_job_run.return_value = JOB1_RUN_DESCRIPTION
+        query_status = self.emr_containers.poll_query_status(job_id="job123456")
         # should only poll once since query is already in terminal state
-        emr_client_mock.describe_job_run.assert_called_once()
-        assert query_status == 'COMPLETED'
+        mocked_hook_client.describe_job_run.assert_called_once()
+        assert query_status == "COMPLETED"
 
-    @mock.patch("boto3.session.Session")
-    def test_query_status_polling_with_timeout(self, mock_session):
-        emr_client_mock = mock.MagicMock()
-        emr_session_mock = mock.MagicMock()
-        emr_session_mock.client.return_value = emr_client_mock
-        mock_session.return_value = emr_session_mock
-        emr_client_mock.describe_job_run.return_value = JOB2_RUN_DESCRIPTION
+    def test_query_status_polling_with_timeout(self, mocked_hook_client):
+        mocked_hook_client.describe_job_run.return_value = JOB2_RUN_DESCRIPTION
 
-        query_status = self.emr_containers.poll_query_status(job_id='job123456', max_tries=2)
+        query_status = self.emr_containers.poll_query_status(
+            job_id="job123456", max_polling_attempts=2, poll_interval=0
+        )
         # should poll until max_tries is reached since query is in non-terminal state
-        assert emr_client_mock.describe_job_run.call_count == 2
-        assert query_status == 'RUNNING'
+        assert mocked_hook_client.describe_job_run.call_count == 2
+        assert query_status == "RUNNING"

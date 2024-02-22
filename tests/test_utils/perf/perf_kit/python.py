@@ -14,13 +14,15 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
+
 import contextlib
 import cProfile
 import datetime
-import io
 import os
 import pstats
 import signal
+from io import StringIO
 
 PYSPY_OUTPUT = os.environ.get("PYSPY_OUTPUT", "/files/pyspy/")
 
@@ -72,7 +74,7 @@ def profiled(print_callers=False):
         yield
     finally:
         profile.disable()
-        stat = io.StringIO()
+        stat = StringIO()
         pstatistics = pstats.Stats(profile, stream=stat).sort_stats("cumulative")
         if print_callers:
             pstatistics.print_callers()

@@ -15,6 +15,8 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
+
 from unittest import mock
 
 import pytest
@@ -23,6 +25,9 @@ from airflow.models import Connection
 from airflow.providers.pagerduty.hooks.pagerduty import PagerdutyHook
 from airflow.providers.pagerduty.hooks.pagerduty_events import PagerdutyEventsHook
 from airflow.utils import db
+
+pytestmark = pytest.mark.db_test
+
 
 DEFAULT_CONN_ID = "pagerduty_default"
 

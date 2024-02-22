@@ -14,13 +14,13 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
 
-import unittest
 from unittest.mock import Mock, patch
 
 import pytest
-from parameterized import parameterized
 
+from airflow.exceptions import AirflowSkipException
 from airflow.providers.tableau.sensors.tableau import (
     TableauJobFailedException,
     TableauJobFinishCode,
@@ -28,15 +28,15 @@ from airflow.providers.tableau.sensors.tableau import (
 )
 
 
-class TestTableauJobStatusSensor(unittest.TestCase):
+class TestTableauJobStatusSensor:
     """
     Test Class for JobStatusSensor
     """
 
-    def setUp(self):
-        self.kwargs = {'job_id': 'job_2', 'site_id': 'test_site', 'task_id': 'task', 'dag': None}
+    def setup_method(self):
+        self.kwargs = {"job_id": "job_2", "site_id": "test_site", "task_id": "task", "dag": None}
 
-    @patch('airflow.providers.tableau.sensors.tableau.TableauHook')
+    @patch("airflow.providers.tableau.sensors.tableau.TableauHook")
     def test_poke(self, mock_tableau_hook):
         """
         Test poke
@@ -50,16 +50,26 @@ class TestTableauJobStatusSensor(unittest.TestCase):
         assert job_finished
         mock_tableau_hook.get_job_status.assert_called_once_with(job_id=sensor.job_id)
 
-    @parameterized.expand([(TableauJobFinishCode.ERROR,), (TableauJobFinishCode.CANCELED,)])
-    @patch('airflow.providers.tableau.sensors.tableau.TableauHook')
-    def test_poke_failed(self, finish_code, mock_tableau_hook):
+    @pytest.mark.parametrize(
+        "soft_fail, expected_exception", ((False, TableauJobFailedException), (True, AirflowSkipException))
+    )
+    @pytest.mark.parametrize(
+        "finish_code",
+        [
+            pytest.param(TableauJobFinishCode.ERROR, id="ERROR"),
+            pytest.param(TableauJobFinishCode.CANCELED, id="CANCELED"),
+        ],
+    )
+    @patch("airflow.providers.tableau.sensors.tableau.TableauHook")
+    def test_poke_failed(self, mock_tableau_hook, finish_code, soft_fail: bool, expected_exception):
         """
         Test poke failed
         """
         mock_tableau_hook.return_value.__enter__ = Mock(return_value=mock_tableau_hook)
         mock_tableau_hook.get_job_status.return_value = finish_code
         sensor = TableauJobStatusSensor(**self.kwargs)
+        sensor.soft_fail = soft_fail
 
-        with pytest.raises(TableauJobFailedException):
+        with pytest.raises(expected_exception):
             sensor.poke({})
         mock_tableau_hook.get_job_status.assert_called_once_with(job_id=sensor.job_id)

@@ -15,13 +15,15 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
+
 import csv
 import logging
 import os
 import textwrap
 from collections import defaultdict
 from time import sleep
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import rich_click as click
 from github import Github, GithubException
@@ -44,14 +46,14 @@ SOURCE_DIR_PATH = os.path.abspath(os.path.join(MY_DIR_PATH, os.pardir))
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
-@click.group(context_settings={'help_option_names': ['-h', '--help'], 'max_content_width': 500})
+@click.group(context_settings={"help_option_names": ["-h", "--help"], "max_content_width": 500})
 def cli():
     ...
 
 
 def render_template_file(
     template_name: str,
-    context: Dict[str, Any],
+    context: dict[str, Any],
     autoescape: bool = True,
     keep_trailing_newline: bool = False,
 ) -> str:
@@ -79,7 +81,7 @@ def render_template_file(
 
 def render_template_string(
     template_string: str,
-    context: Dict[str, Any],
+    context: dict[str, Any],
     autoescape: bool = True,
     keep_trailing_newline: bool = False,
 ) -> str:
@@ -114,13 +116,7 @@ option_github_token = click.option(
         Can be generated with:
         https://github.com/settings/tokens/new?description=Write%20issues&scopes=repo:status,public_repo"""
     ),
-    envvar='GITHUB_TOKEN',
-)
-
-option_verbose = click.option(
-    "--verbose",
-    is_flag=True,
-    help="Print verbose information about performed steps",
+    envvar="GITHUB_TOKEN",
 )
 
 option_dry_run = click.option(
@@ -186,12 +182,10 @@ option_start_from = click.option(
 @option_github_token
 @option_max_issues
 @option_start_from
-@option_verbose
 @cli.command()
 def prepare_bulk_issues(
     github_token: str,
-    verbose: bool,
-    max_issues: Optional[int],
+    max_issues: int | None,
     dry_run: bool,
     template_file: str,
     csv_file: str,
@@ -200,48 +194,38 @@ def prepare_bulk_issues(
     title: str,
     start_from: int,
 ):
-    issues: Dict[str, List[List[str]]] = defaultdict(list)
+    issues: dict[str, list[list[str]]] = defaultdict(list)
     with open(csv_file) as f:
         read_issues = csv.reader(f)
         for index, row in enumerate(read_issues):
-            if index == 0:
-                continue
-            issues[row[0]].append(row)
+            if index:
+                issues[row[0]].append(row)
     names = sorted(issues.keys())[start_from:]
     total_issues = len(names)
     processed_issues = 0
     if dry_run:
-        for name in names:
+        for name in names[:max_issues]:
             issue_content, issue_title = get_issue_details(issues, name, template_file, title)
             console.print(f"[yellow]### {issue_title} #####[/]")
             console.print(issue_content)
             console.print()
             processed_issues += 1
-            if max_issues is not None:
-                max_issues -= 1
-                if max_issues == 0:
-                    break
         console.print()
         console.print(f"Displayed {processed_issues} issue(s).")
     else:
-        labels_list: List[str] = labels.split(",") if labels else []
+        labels_list: list[str] = labels.split(",") if labels else []
         issues_to_create = int(min(total_issues, max_issues if max_issues is not None else total_issues))
         with Progress(console=console) as progress:
             task = progress.add_task(f"Creating {issues_to_create} issue(s)", total=issues_to_create)
             g = Github(github_token)
             repo = g.get_repo(repository)
             try:
-                for i in range(total_issues):
-                    name = names[i]
+                for name in names[:max_issues]:
                     issue_content, issue_title = get_issue_details(issues, name, template_file, title)
                     repo.create_issue(title=issue_title, body=issue_content, labels=labels_list)
                     progress.advance(task)
                     processed_issues += 1
                     sleep(2)  # avoid secondary rate limit!
-                    if max_issues is not None:
-                        max_issues -= 1
-                        if max_issues == 0:
-                            break
             except GithubException as e:
                 console.print(f"[red]Error!: {e}[/]")
                 console.print(

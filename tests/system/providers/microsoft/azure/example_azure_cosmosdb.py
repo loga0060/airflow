@@ -15,10 +15,6 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-
-# Ignore missing args provided by default_args
-# type: ignore[call-arg]
-
 """
 This is only an example DAG to highlight usage of AzureCosmosDocumentSensor to detect
 if a document now exists.
@@ -28,6 +24,8 @@ You can trigger this manually with `airflow dags trigger example_cosmosdb_sensor
 *Note: Make sure that connection `azure_cosmos_default` is properly set before running
 this example.*
 """
+from __future__ import annotations
+
 import os
 from datetime import datetime
 
@@ -40,23 +38,26 @@ DAG_ID = "example_azure_cosmosdb_sensor"
 
 with DAG(
     dag_id=DAG_ID,
-    default_args={'database_name': 'airflow_example_db'},
+    default_args={"database_name": "airflow_example_db"},
     start_date=datetime(2021, 1, 1),
     catchup=False,
     doc_md=__doc__,
-    tags=['example'],
+    tags=["example"],
 ) as dag:
-
+    # [START cosmos_document_sensor]
     t1 = AzureCosmosDocumentSensor(
-        task_id='check_cosmos_file',
-        collection_name='airflow_example_coll',
-        document_id='airflow_checkid',
+        task_id="check_cosmos_file",
+        collection_name="airflow_example_coll",
+        document_id="airflow_checkid",
+        database_name="database_name",
     )
+    # [END cosmos_document_sensor]
 
     t2 = AzureCosmosInsertDocumentOperator(
-        task_id='insert_cosmos_file',
-        collection_name='new-collection',
+        task_id="insert_cosmos_file",
+        collection_name="new-collection",
         document={"id": "someuniqueid", "param1": "value1", "param2": "value2"},
+        database_name="database_name",
     )
 
     t1 >> t2

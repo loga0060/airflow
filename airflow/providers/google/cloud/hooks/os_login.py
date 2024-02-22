@@ -14,22 +14,24 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""
-.. spelling::
+"""OS Login hooks.
 
+.. spelling:word-list::
     ImportSshPublicKeyResponse
     oslogin
 """
+from __future__ import annotations
 
-
-from typing import Dict, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, Sequence
 
 from google.api_core.gapic_v1.method import DEFAULT, _MethodDefault
-from google.api_core.retry import Retry
 from google.cloud.oslogin_v1 import ImportSshPublicKeyResponse, OsLoginServiceClient
 
 from airflow.providers.google.common.consts import CLIENT_INFO
 from airflow.providers.google.common.hooks.base_google import PROVIDE_PROJECT_ID, GoogleBaseHook
+
+if TYPE_CHECKING:
+    from google.api_core.retry import Retry
 
 
 class OSLoginHook(GoogleBaseHook):
@@ -42,39 +44,43 @@ class OSLoginHook(GoogleBaseHook):
 
     def __init__(
         self,
-        gcp_conn_id: str = 'google_cloud_default',
-        delegate_to: Optional[str] = None,
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
+        gcp_conn_id: str = "google_cloud_default",
+        impersonation_chain: str | Sequence[str] | None = None,
+        **kwargs,
     ) -> None:
+        if kwargs.get("delegate_to") is not None:
+            raise RuntimeError(
+                "The `delegate_to` parameter has been deprecated before and finally removed in this version"
+                " of Google Provider. You MUST convert it to `impersonate_chain`"
+            )
         super().__init__(
             gcp_conn_id=gcp_conn_id,
-            delegate_to=delegate_to,
             impersonation_chain=impersonation_chain,
         )
-        self._conn = None  # type: Optional[OsLoginServiceClient]
+        self._conn: OsLoginServiceClient | None = None
 
     def get_conn(self) -> OsLoginServiceClient:
-        """Return OS Login service client"""
+        """Return OS Login service client."""
         if self._conn:
             return self._conn
 
-        self._conn = OsLoginServiceClient(credentials=self._get_credentials(), client_info=CLIENT_INFO)
+        self._conn = OsLoginServiceClient(credentials=self.get_credentials(), client_info=CLIENT_INFO)
         return self._conn
 
     @GoogleBaseHook.fallback_to_default_project_id
     def import_ssh_public_key(
         self,
         user: str,
-        ssh_public_key: Dict,
+        ssh_public_key: dict,
         project_id: str = PROVIDE_PROJECT_ID,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> ImportSshPublicKeyResponse:
         """
-        Adds an SSH public key and returns the profile information. Default POSIX
-        account information is set when no username and UID exist as part of the
-        login profile.
+        Add an SSH public key and returns the profile information.
+
+        Default POSIX account information is set when no username and UID exist as part of the login profile.
 
         :param user: The unique ID for the user
         :param ssh_public_key: The SSH public key and expiration time.
@@ -88,11 +94,11 @@ class OSLoginHook(GoogleBaseHook):
         """
         conn = self.get_conn()
         return conn.import_ssh_public_key(
-            request=dict(
-                parent=f"users/{user}",
-                ssh_public_key=ssh_public_key,
-                project_id=project_id,
-            ),
+            request={
+                "parent": f"users/{user}",
+                "ssh_public_key": ssh_public_key,
+                "project_id": project_id,
+            },
             retry=retry,
             timeout=timeout,
             metadata=metadata,

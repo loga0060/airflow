@@ -14,11 +14,11 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
 
-from typing import Dict, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, Sequence
 
 from google.api_core.gapic_v1.method import DEFAULT, _MethodDefault
-from google.api_core.retry import Retry
 from google.cloud import datacatalog
 from google.cloud.datacatalog import (
     CreateTagRequest,
@@ -30,11 +30,14 @@ from google.cloud.datacatalog import (
     TagTemplate,
     TagTemplateField,
 )
-from google.protobuf.field_mask_pb2 import FieldMask
 
-from airflow import AirflowException
+from airflow.exceptions import AirflowException
 from airflow.providers.google.common.consts import CLIENT_INFO
 from airflow.providers.google.common.hooks.base_google import PROVIDE_PROJECT_ID, GoogleBaseHook
+
+if TYPE_CHECKING:
+    from google.api_core.retry import Retry
+    from google.protobuf.field_mask_pb2 import FieldMask
 
 
 class CloudDataCatalogHook(GoogleBaseHook):
@@ -42,9 +45,6 @@ class CloudDataCatalogHook(GoogleBaseHook):
     Hook for Google Cloud Data Catalog Service.
 
     :param gcp_conn_id: The connection ID to use when fetching connection info.
-    :param delegate_to: The account to impersonate using domain-wide delegation of authority,
-        if any. For this to work, the service account making the request must have
-        domain-wide delegation enabled.
     :param impersonation_chain: Optional service account to impersonate using short-term
         credentials, or chained list of accounts required to get the access_token
         of the last account in the list, which will be impersonated in the request.
@@ -58,20 +58,24 @@ class CloudDataCatalogHook(GoogleBaseHook):
     def __init__(
         self,
         gcp_conn_id: str = "google_cloud_default",
-        delegate_to: Optional[str] = None,
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
+        impersonation_chain: str | Sequence[str] | None = None,
+        **kwargs,
     ) -> None:
+        if kwargs.get("delegate_to") is not None:
+            raise RuntimeError(
+                "The `delegate_to` parameter has been deprecated before and finally removed in this version"
+                " of Google Provider. You MUST convert it to `impersonate_chain`"
+            )
         super().__init__(
             gcp_conn_id=gcp_conn_id,
-            delegate_to=delegate_to,
             impersonation_chain=impersonation_chain,
         )
-        self._client: Optional[DataCatalogClient] = None
+        self._client: DataCatalogClient | None = None
 
     def get_conn(self) -> DataCatalogClient:
-        """Retrieves client library object that allow access to Cloud Data Catalog service."""
+        """Retrieve client library object that allow access to Cloud Data Catalog service."""
         if not self._client:
-            self._client = DataCatalogClient(credentials=self._get_credentials(), client_info=CLIENT_INFO)
+            self._client = DataCatalogClient(credentials=self.get_credentials(), client_info=CLIENT_INFO)
         return self._client
 
     @GoogleBaseHook.fallback_to_default_project_id
@@ -80,14 +84,14 @@ class CloudDataCatalogHook(GoogleBaseHook):
         location: str,
         entry_group: str,
         entry_id: str,
-        entry: Union[dict, Entry],
+        entry: dict | Entry,
         project_id: str = PROVIDE_PROJECT_ID,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> Entry:
         """
-        Creates an entry.
+        Create an entry.
 
         Currently only entries of 'FILESET' type can be created.
 
@@ -107,14 +111,14 @@ class CloudDataCatalogHook(GoogleBaseHook):
         """
         client = self.get_conn()
         parent = f"projects/{project_id}/locations/{location}/entryGroups/{entry_group}"
-        self.log.info('Creating a new entry: parent=%s', parent)
+        self.log.info("Creating a new entry: parent=%s", parent)
         result = client.create_entry(
-            request={'parent': parent, 'entry_id': entry_id, 'entry': entry},
+            request={"parent": parent, "entry_id": entry_id, "entry": entry},
             retry=retry,
             timeout=timeout,
             metadata=metadata,
         )
-        self.log.info('Created a entry: name=%s', result.name)
+        self.log.info("Created a entry: name=%s", result.name)
         return result
 
     @GoogleBaseHook.fallback_to_default_project_id
@@ -122,14 +126,14 @@ class CloudDataCatalogHook(GoogleBaseHook):
         self,
         location: str,
         entry_group_id: str,
-        entry_group: Union[Dict, EntryGroup],
+        entry_group: dict | EntryGroup,
         project_id: str = PROVIDE_PROJECT_ID,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> EntryGroup:
         """
-        Creates an EntryGroup.
+        Create an EntryGroup.
 
         :param location: Required. The location of the entry group to create.
         :param entry_group_id: Required. The id of the entry group to create. The id must begin with a letter
@@ -149,15 +153,15 @@ class CloudDataCatalogHook(GoogleBaseHook):
         """
         client = self.get_conn()
         parent = f"projects/{project_id}/locations/{location}"
-        self.log.info('Creating a new entry group: parent=%s', parent)
+        self.log.info("Creating a new entry group: parent=%s", parent)
 
         result = client.create_entry_group(
-            request={'parent': parent, 'entry_group_id': entry_group_id, 'entry_group': entry_group},
+            request={"parent": parent, "entry_group_id": entry_group_id, "entry_group": entry_group},
             retry=retry,
             timeout=timeout,
             metadata=metadata,
         )
-        self.log.info('Created a entry group: name=%s', result.name)
+        self.log.info("Created a entry group: name=%s", result.name)
 
         return result
 
@@ -167,15 +171,15 @@ class CloudDataCatalogHook(GoogleBaseHook):
         location: str,
         entry_group: str,
         entry: str,
-        tag: Union[dict, Tag],
+        tag: dict | Tag,
         project_id: str = PROVIDE_PROJECT_ID,
-        template_id: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        template_id: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> Tag:
         """
-        Creates a tag on an entry.
+        Create a tag on an entry.
 
         :param location: Required. The location of the tag to create.
         :param entry_group: Required. Entry group ID under which the tag is created.
@@ -201,16 +205,16 @@ class CloudDataCatalogHook(GoogleBaseHook):
                 tag["template"] = template_path
         parent = f"projects/{project_id}/locations/{location}/entryGroups/{entry_group}/entries/{entry}"
 
-        self.log.info('Creating a new tag: parent=%s', parent)
+        self.log.info("Creating a new tag: parent=%s", parent)
         # HACK: google-cloud-datacatalog has problems with mapping messages where the value is not a
         # primitive type, so we need to convert it manually.
         # See: https://github.com/googleapis/python-datacatalog/issues/84
         if isinstance(tag, dict):
             tag = Tag(
-                name=tag.get('name'),
-                template=tag.get('template'),
-                template_display_name=tag.get('template_display_name'),
-                column=tag.get('column'),
+                name=tag.get("name"),
+                template=tag.get("template"),
+                template_display_name=tag.get("template_display_name"),
+                column=tag.get("column"),
                 fields={
                     k: datacatalog.TagField(**v) if isinstance(v, dict) else v
                     for k, v in tag.get("fields", {}).items()
@@ -222,7 +226,7 @@ class CloudDataCatalogHook(GoogleBaseHook):
         )
 
         result = client.create_tag(request=request, retry=retry, timeout=timeout, metadata=metadata or ())
-        self.log.info('Created a tag: name=%s', result.name)
+        self.log.info("Created a tag: name=%s", result.name)
 
         return result
 
@@ -231,14 +235,14 @@ class CloudDataCatalogHook(GoogleBaseHook):
         self,
         location,
         tag_template_id: str,
-        tag_template: Union[dict, TagTemplate],
+        tag_template: dict | TagTemplate,
         project_id: str = PROVIDE_PROJECT_ID,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> TagTemplate:
         """
-        Creates a tag template.
+        Create a tag template.
 
         :param location: Required. The location of the tag template to create.
         :param tag_template_id: Required. The id of the tag template to create.
@@ -257,7 +261,7 @@ class CloudDataCatalogHook(GoogleBaseHook):
         client = self.get_conn()
         parent = f"projects/{project_id}/locations/{location}"
 
-        self.log.info('Creating a new tag template: parent=%s', parent)
+        self.log.info("Creating a new tag template: parent=%s", parent)
         # HACK: google-cloud-datacatalog has problems with mapping messages where the value is not a
         # primitive type, so we need to convert it manually.
         # See: https://github.com/googleapis/python-datacatalog/issues/84
@@ -280,7 +284,7 @@ class CloudDataCatalogHook(GoogleBaseHook):
             timeout=timeout,
             metadata=metadata,
         )
-        self.log.info('Created a tag template: name=%s', result.name)
+        self.log.info("Created a tag template: name=%s", result.name)
 
         return result
 
@@ -290,14 +294,14 @@ class CloudDataCatalogHook(GoogleBaseHook):
         location: str,
         tag_template: str,
         tag_template_field_id: str,
-        tag_template_field: Union[dict, TagTemplateField],
+        tag_template_field: dict | TagTemplateField,
         project_id: str = PROVIDE_PROJECT_ID,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> TagTemplateField:
         r"""
-        Creates a field in a tag template.
+        Create a field in a tag template.
 
         :param location: Required. The location of the tag template field to create.
         :param tag_template: Required. The id of the tag template to create.
@@ -320,20 +324,20 @@ class CloudDataCatalogHook(GoogleBaseHook):
         client = self.get_conn()
         parent = f"projects/{project_id}/locations/{location}/tagTemplates/{tag_template}"
 
-        self.log.info('Creating a new tag template field: parent=%s', parent)
+        self.log.info("Creating a new tag template field: parent=%s", parent)
 
         result = client.create_tag_template_field(
             request={
-                'parent': parent,
-                'tag_template_field_id': tag_template_field_id,
-                'tag_template_field': tag_template_field,
+                "parent": parent,
+                "tag_template_field_id": tag_template_field_id,
+                "tag_template_field": tag_template_field,
             },
             retry=retry,
             timeout=timeout,
             metadata=metadata,
         )
 
-        self.log.info('Created a tag template field: name=%s', result.name)
+        self.log.info("Created a tag template field: name=%s", result.name)
 
         return result
 
@@ -344,12 +348,12 @@ class CloudDataCatalogHook(GoogleBaseHook):
         entry_group: str,
         entry: str,
         project_id: str = PROVIDE_PROJECT_ID,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> None:
         """
-        Deletes an existing entry.
+        Delete an existing entry.
 
         :param location: Required. The location of the entry to delete.
         :param entry_group: Required. Entry group ID for entries that is deleted.
@@ -364,9 +368,9 @@ class CloudDataCatalogHook(GoogleBaseHook):
         """
         client = self.get_conn()
         name = f"projects/{project_id}/locations/{location}/entryGroups/{entry_group}/entries/{entry}"
-        self.log.info('Deleting a entry: name=%s', name)
-        client.delete_entry(request={'name': name}, retry=retry, timeout=timeout, metadata=metadata or ())
-        self.log.info('Deleted a entry: name=%s', name)
+        self.log.info("Deleting a entry: name=%s", name)
+        client.delete_entry(request={"name": name}, retry=retry, timeout=timeout, metadata=metadata or ())
+        self.log.info("Deleted a entry: name=%s", name)
 
     @GoogleBaseHook.fallback_to_default_project_id
     def delete_entry_group(
@@ -374,12 +378,12 @@ class CloudDataCatalogHook(GoogleBaseHook):
         location,
         entry_group,
         project_id: str = PROVIDE_PROJECT_ID,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> None:
         """
-        Deletes an EntryGroup.
+        Delete an EntryGroup.
 
         Only entry groups that do not contain entries can be deleted.
 
@@ -396,11 +400,11 @@ class CloudDataCatalogHook(GoogleBaseHook):
         client = self.get_conn()
         name = f"projects/{project_id}/locations/{location}/entryGroups/{entry_group}"
 
-        self.log.info('Deleting a entry group: name=%s', name)
+        self.log.info("Deleting a entry group: name=%s", name)
         client.delete_entry_group(
-            request={'name': name}, retry=retry, timeout=timeout, metadata=metadata or ()
+            request={"name": name}, retry=retry, timeout=timeout, metadata=metadata or ()
         )
-        self.log.info('Deleted a entry group: name=%s', name)
+        self.log.info("Deleted a entry group: name=%s", name)
 
     @GoogleBaseHook.fallback_to_default_project_id
     def delete_tag(
@@ -410,12 +414,12 @@ class CloudDataCatalogHook(GoogleBaseHook):
         entry: str,
         tag: str,
         project_id: str = PROVIDE_PROJECT_ID,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> None:
         """
-        Deletes a tag.
+        Delete a tag.
 
         :param location: Required. The location of the tag to delete.
         :param entry_group: Entry group ID for tag that is deleted.
@@ -434,9 +438,9 @@ class CloudDataCatalogHook(GoogleBaseHook):
             f"projects/{project_id}/locations/{location}/entryGroups/{entry_group}/entries/{entry}/tags/{tag}"
         )
 
-        self.log.info('Deleting a tag: name=%s', name)
-        client.delete_tag(request={'name': name}, retry=retry, timeout=timeout, metadata=metadata or ())
-        self.log.info('Deleted a tag: name=%s', name)
+        self.log.info("Deleting a tag: name=%s", name)
+        client.delete_tag(request={"name": name}, retry=retry, timeout=timeout, metadata=metadata or ())
+        self.log.info("Deleted a tag: name=%s", name)
 
     @GoogleBaseHook.fallback_to_default_project_id
     def delete_tag_template(
@@ -445,12 +449,12 @@ class CloudDataCatalogHook(GoogleBaseHook):
         tag_template,
         force: bool,
         project_id: str,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> None:
         """
-        Deletes a tag template and all tags using the template.
+        Delete a tag template and all tags using the template.
 
         :param location: Required. The location of the tag template to delete.
         :param tag_template: ID for tag template that is deleted.
@@ -468,11 +472,11 @@ class CloudDataCatalogHook(GoogleBaseHook):
         client = self.get_conn()
         name = f"projects/{project_id}/locations/{location}/tagTemplates/{tag_template}"
 
-        self.log.info('Deleting a tag template: name=%s', name)
+        self.log.info("Deleting a tag template: name=%s", name)
         client.delete_tag_template(
-            request={'name': name, 'force': force}, retry=retry, timeout=timeout, metadata=metadata or ()
+            request={"name": name, "force": force}, retry=retry, timeout=timeout, metadata=metadata or ()
         )
-        self.log.info('Deleted a tag template: name=%s', name)
+        self.log.info("Deleted a tag template: name=%s", name)
 
     @GoogleBaseHook.fallback_to_default_project_id
     def delete_tag_template_field(
@@ -482,12 +486,12 @@ class CloudDataCatalogHook(GoogleBaseHook):
         field: str,
         force: bool,
         project_id: str,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> None:
         """
-        Deletes a field in a tag template and all uses of that field.
+        Delete a field in a tag template and all uses of that field.
 
         :param location: Required. The location of the tag template to delete.
         :param tag_template: Tag Template ID for tag template field that is deleted.
@@ -504,11 +508,11 @@ class CloudDataCatalogHook(GoogleBaseHook):
         client = self.get_conn()
         name = f"projects/{project_id}/locations/{location}/tagTemplates/{tag_template}/fields/{field}"
 
-        self.log.info('Deleting a tag template field: name=%s', name)
+        self.log.info("Deleting a tag template field: name=%s", name)
         client.delete_tag_template_field(
-            request={'name': name, 'force': force}, retry=retry, timeout=timeout, metadata=metadata or ()
+            request={"name": name, "force": force}, retry=retry, timeout=timeout, metadata=metadata or ()
         )
-        self.log.info('Deleted a tag template field: name=%s', name)
+        self.log.info("Deleted a tag template field: name=%s", name)
 
     @GoogleBaseHook.fallback_to_default_project_id
     def get_entry(
@@ -517,12 +521,12 @@ class CloudDataCatalogHook(GoogleBaseHook):
         entry_group: str,
         entry: str,
         project_id: str,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> Entry:
         """
-        Gets an entry.
+        Get an entry.
 
         :param location: Required. The location of the entry to get.
         :param entry_group: Required. The entry group of the entry to get.
@@ -538,11 +542,11 @@ class CloudDataCatalogHook(GoogleBaseHook):
         client = self.get_conn()
         name = f"projects/{project_id}/locations/{location}/entryGroups/{entry_group}/entries/{entry}"
 
-        self.log.info('Getting a entry: name=%s', name)
+        self.log.info("Getting a entry: name=%s", name)
         result = client.get_entry(
-            request={'name': name}, retry=retry, timeout=timeout, metadata=metadata or ()
+            request={"name": name}, retry=retry, timeout=timeout, metadata=metadata or ()
         )
-        self.log.info('Received a entry: name=%s', result.name)
+        self.log.info("Received a entry: name=%s", result.name)
 
         return result
 
@@ -552,13 +556,13 @@ class CloudDataCatalogHook(GoogleBaseHook):
         location: str,
         entry_group: str,
         project_id: str,
-        read_mask: Optional[FieldMask] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        read_mask: FieldMask | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> EntryGroup:
         """
-        Gets an entry group.
+        Get an entry group.
 
         :param location: Required. The location of the entry group to get.
         :param entry_group: The ID of the entry group to get.
@@ -577,16 +581,16 @@ class CloudDataCatalogHook(GoogleBaseHook):
         client = self.get_conn()
         name = f"projects/{project_id}/locations/{location}/entryGroups/{entry_group}"
 
-        self.log.info('Getting a entry group: name=%s', name)
+        self.log.info("Getting a entry group: name=%s", name)
 
         result = client.get_entry_group(
-            request={'name': name, 'read_mask': read_mask},
+            request={"name": name, "read_mask": read_mask},
             retry=retry,
             timeout=timeout,
             metadata=metadata,
         )
 
-        self.log.info('Received a entry group: name=%s', result.name)
+        self.log.info("Received a entry group: name=%s", result.name)
 
         return result
 
@@ -596,12 +600,12 @@ class CloudDataCatalogHook(GoogleBaseHook):
         location: str,
         tag_template: str,
         project_id: str,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> TagTemplate:
         """
-        Gets a tag template.
+        Get a tag template.
 
         :param location: Required. The location of the tag template to get.
         :param tag_template: Required. The ID of the tag template to get.
@@ -616,13 +620,13 @@ class CloudDataCatalogHook(GoogleBaseHook):
         client = self.get_conn()
         name = f"projects/{project_id}/locations/{location}/tagTemplates/{tag_template}"
 
-        self.log.info('Getting a tag template: name=%s', name)
+        self.log.info("Getting a tag template: name=%s", name)
 
         result = client.get_tag_template(
-            request={'name': name}, retry=retry, timeout=timeout, metadata=metadata or ()
+            request={"name": name}, retry=retry, timeout=timeout, metadata=metadata or ()
         )
 
-        self.log.info('Received a tag template: name=%s', result.name)
+        self.log.info("Received a tag template: name=%s", result.name)
 
         return result
 
@@ -634,12 +638,12 @@ class CloudDataCatalogHook(GoogleBaseHook):
         entry: str,
         project_id: str,
         page_size: int = 100,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ):
         """
-        Lists the tags on an Entry.
+        List the tags on an Entry.
 
         :param location: Required. The location of the tags to get.
         :param entry_group: Required. The entry group of the tags to get.
@@ -658,16 +662,16 @@ class CloudDataCatalogHook(GoogleBaseHook):
         client = self.get_conn()
         parent = f"projects/{project_id}/locations/{location}/entryGroups/{entry_group}/entries/{entry}"
 
-        self.log.info('Listing tag on entry: entry_name=%s', parent)
+        self.log.info("Listing tag on entry: entry_name=%s", parent)
 
         result = client.list_tags(
-            request={'parent': parent, 'page_size': page_size},
+            request={"parent": parent, "page_size": page_size},
             retry=retry,
             timeout=timeout,
             metadata=metadata,
         )
 
-        self.log.info('Received tags.')
+        self.log.info("Received tags.")
 
         return result
 
@@ -679,12 +683,12 @@ class CloudDataCatalogHook(GoogleBaseHook):
         entry: str,
         template_name: str,
         project_id: str,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> Tag:
         """
-        Gets for a tag with a specific template for a specific entry.
+        Get for a tag with a specific template for a specific entry.
 
         :param location: Required. The location which contains the entry to search for.
         :param entry_group: The entry group ID which contains the entry to search for.
@@ -712,11 +716,11 @@ class CloudDataCatalogHook(GoogleBaseHook):
 
     def lookup_entry(
         self,
-        linked_resource: Optional[str] = None,
-        sql_resource: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        linked_resource: str | None = None,
+        sql_resource: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> Entry:
         r"""
         Get an entry by target resource name.
@@ -743,22 +747,22 @@ class CloudDataCatalogHook(GoogleBaseHook):
             raise AirflowException("At least one of linked_resource, sql_resource should be set.")
 
         if linked_resource:
-            self.log.info('Getting entry: linked_resource=%s', linked_resource)
+            self.log.info("Getting entry: linked_resource=%s", linked_resource)
             result = client.lookup_entry(
-                request={'linked_resource': linked_resource},
+                request={"linked_resource": linked_resource},
                 retry=retry,
                 timeout=timeout,
                 metadata=metadata,
             )
         else:
-            self.log.info('Getting entry: sql_resource=%s', sql_resource)
+            self.log.info("Getting entry: sql_resource=%s", sql_resource)
             result = client.lookup_entry(
-                request={'sql_resource': sql_resource},
+                request={"sql_resource": sql_resource},
                 retry=retry,
                 timeout=timeout,
                 metadata=metadata,
             )
-        self.log.info('Received entry. name=%s', result.name)
+        self.log.info("Received entry. name=%s", result.name)
 
         return result
 
@@ -770,12 +774,12 @@ class CloudDataCatalogHook(GoogleBaseHook):
         field: str,
         new_tag_template_field_id: str,
         project_id: str,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> TagTemplateField:
         """
-        Renames a field in a tag template.
+        Rename a field in a tag template.
 
         :param location: Required. The location of the tag template field to rename.
         :param tag_template: The tag template ID for field that is renamed.
@@ -795,32 +799,32 @@ class CloudDataCatalogHook(GoogleBaseHook):
         name = f"projects/{project_id}/locations/{location}/tagTemplates/{tag_template}/fields/{field}"
 
         self.log.info(
-            'Renaming field: old_name=%s, new_tag_template_field_id=%s', name, new_tag_template_field_id
+            "Renaming field: old_name=%s, new_tag_template_field_id=%s", name, new_tag_template_field_id
         )
 
         result = client.rename_tag_template_field(
-            request={'name': name, 'new_tag_template_field_id': new_tag_template_field_id},
+            request={"name": name, "new_tag_template_field_id": new_tag_template_field_id},
             retry=retry,
             timeout=timeout,
             metadata=metadata,
         )
 
-        self.log.info('Renamed tag template field.')
+        self.log.info("Renamed tag template field.")
 
         return result
 
     def search_catalog(
         self,
-        scope: Union[Dict, SearchCatalogRequest.Scope],
+        scope: dict | SearchCatalogRequest.Scope,
         query: str,
         page_size: int = 100,
-        order_by: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        order_by: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ):
         r"""
-        Searches Data Catalog for multiple resources like entries, tags that match a query.
+        Search Data Catalog for multiple resources like entries, tags that match a query.
 
         This does not return the complete resource, only the resource identifier and high level fields.
         Clients can subsequently call ``Get`` methods.
@@ -870,31 +874,31 @@ class CloudDataCatalogHook(GoogleBaseHook):
             order_by,
         )
         result = client.search_catalog(
-            request={'scope': scope, 'query': query, 'page_size': page_size, 'order_by': order_by},
+            request={"scope": scope, "query": query, "page_size": page_size, "order_by": order_by},
             retry=retry,
             timeout=timeout,
             metadata=metadata,
         )
 
-        self.log.info('Received items.')
+        self.log.info("Received items.")
 
         return result
 
     @GoogleBaseHook.fallback_to_default_project_id
     def update_entry(
         self,
-        entry: Union[Dict, Entry],
-        update_mask: Union[dict, FieldMask],
+        entry: dict | Entry,
+        update_mask: dict | FieldMask,
         project_id: str,
-        location: Optional[str] = None,
-        entry_group: Optional[str] = None,
-        entry_id: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        location: str | None = None,
+        entry_group: str | None = None,
+        entry_id: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> Entry:
         """
-        Updates an existing entry.
+        Update an existing entry.
 
         :param entry: Required. The updated entry. The "name" field must be set.
 
@@ -939,32 +943,32 @@ class CloudDataCatalogHook(GoogleBaseHook):
         if isinstance(entry, dict):
             entry = Entry(**entry)
         result = client.update_entry(
-            request={'entry': entry, 'update_mask': update_mask},
+            request={"entry": entry, "update_mask": update_mask},
             retry=retry,
             timeout=timeout,
             metadata=metadata,
         )
 
-        self.log.info('Updated entry.')
+        self.log.info("Updated entry.")
 
         return result
 
     @GoogleBaseHook.fallback_to_default_project_id
     def update_tag(
         self,
-        tag: Union[Dict, Tag],
-        update_mask: Union[Dict, FieldMask],
+        tag: dict | Tag,
+        update_mask: dict | FieldMask,
         project_id: str,
-        location: Optional[str] = None,
-        entry_group: Optional[str] = None,
-        entry: Optional[str] = None,
-        tag_id: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        location: str | None = None,
+        entry_group: str | None = None,
+        entry: str | None = None,
+        tag_id: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> Tag:
         """
-        Updates an existing tag.
+        Update an existing tag.
 
         :param tag: Required. The updated tag. The "name" field must be set.
 
@@ -1012,29 +1016,29 @@ class CloudDataCatalogHook(GoogleBaseHook):
         if isinstance(tag, dict):
             tag = Tag(**tag)
         result = client.update_tag(
-            request={'tag': tag, 'update_mask': update_mask},
+            request={"tag": tag, "update_mask": update_mask},
             retry=retry,
             timeout=timeout,
             metadata=metadata,
         )
-        self.log.info('Updated tag.')
+        self.log.info("Updated tag.")
 
         return result
 
     @GoogleBaseHook.fallback_to_default_project_id
     def update_tag_template(
         self,
-        tag_template: Union[dict, TagTemplate],
-        update_mask: Union[dict, FieldMask],
+        tag_template: dict | TagTemplate,
+        update_mask: dict | FieldMask,
         project_id: str,
-        location: Optional[str] = None,
-        tag_template_id: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        location: str | None = None,
+        tag_template_id: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> TagTemplate:
         """
-        Updates a tag template.
+        Update a tag template.
 
         This method cannot be used to update the fields of a template. The tag
         template fields are represented as separate resources and should be updated using their own
@@ -1084,31 +1088,31 @@ class CloudDataCatalogHook(GoogleBaseHook):
         if isinstance(tag_template, dict):
             tag_template = TagTemplate(**tag_template)
         result = client.update_tag_template(
-            request={'tag_template': tag_template, 'update_mask': update_mask},
+            request={"tag_template": tag_template, "update_mask": update_mask},
             retry=retry,
             timeout=timeout,
             metadata=metadata,
         )
-        self.log.info('Updated tag template.')
+        self.log.info("Updated tag template.")
 
         return result
 
     @GoogleBaseHook.fallback_to_default_project_id
     def update_tag_template_field(
         self,
-        tag_template_field: Union[dict, TagTemplateField],
-        update_mask: Union[dict, FieldMask],
+        tag_template_field: dict | TagTemplateField,
+        update_mask: dict | FieldMask,
         project_id: str,
-        tag_template_field_name: Optional[str] = None,
-        location: Optional[str] = None,
-        tag_template: Optional[str] = None,
-        tag_template_field_id: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        tag_template_field_name: str | None = None,
+        location: str | None = None,
+        tag_template: str | None = None,
+        tag_template_field_id: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ):
         """
-        Updates a field in a tag template. This method cannot be used to update the field type.
+        Update a field in a tag template. This method cannot be used to update the field type.
 
         :param tag_template_field: Required. The template to update.
 
@@ -1149,14 +1153,14 @@ class CloudDataCatalogHook(GoogleBaseHook):
 
         result = client.update_tag_template_field(
             request={
-                'name': tag_template_field_name,
-                'tag_template_field': tag_template_field,
-                'update_mask': update_mask,
+                "name": tag_template_field_name,
+                "tag_template_field": tag_template_field,
+                "update_mask": update_mask,
             },
             retry=retry,
             timeout=timeout,
             metadata=metadata,
         )
-        self.log.info('Updated tag template field.')
+        self.log.info("Updated tag template field.")
 
         return result

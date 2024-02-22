@@ -14,182 +14,160 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-import warnings
-from typing import TYPE_CHECKING, Iterable, Mapping, Optional, Sequence, Union
+from __future__ import annotations
 
-from pandas import DataFrame
-from tabulate import tabulate
+from functools import cached_property
+from tempfile import NamedTemporaryFile
+from typing import TYPE_CHECKING, Any, Mapping, Sequence
 
-from airflow.exceptions import AirflowException
-from airflow.hooks.base import BaseHook
-from airflow.hooks.dbapi import DbApiHook
-from airflow.models import BaseOperator
-from airflow.providers.slack.hooks.slack_webhook import SlackWebhookHook
-from airflow.providers_manager import ProvidersManager
-from airflow.utils.module_loading import import_string
-from airflow.version import version
+from deprecated import deprecated
+from typing_extensions import Literal
+
+from airflow.exceptions import AirflowException, AirflowProviderDeprecationWarning
+from airflow.providers.slack.hooks.slack import SlackHook
+from airflow.providers.slack.transfers.base_sql_to_slack import BaseSqlToSlackOperator
+from airflow.providers.slack.transfers.sql_to_slack_webhook import SqlToSlackWebhookOperator
+from airflow.providers.slack.utils import parse_filename
 
 if TYPE_CHECKING:
     from airflow.utils.context import Context
 
 
-def _backported_get_hook(connection, *, hook_params=None):
-    """Return hook based on conn_type
-    For supporting Airflow versions < 2.3, we backport "get_hook()" method. This should be removed
-    when "apache-airflow-providers-slack" will depend on Airflow >= 2.3.
+class SqlToSlackApiFileOperator(BaseSqlToSlackOperator):
     """
-    hook = ProvidersManager().hooks.get(connection.conn_type, None)
-
-    if hook is None:
-        raise AirflowException(f'Unknown hook type "{connection.conn_type}"')
-    try:
-        hook_class = import_string(hook.hook_class_name)
-    except ImportError:
-        warnings.warn(
-            "Could not import %s when discovering %s %s",
-            hook.hook_class_name,
-            hook.hook_name,
-            hook.package_name,
-        )
-        raise
-    if hook_params is None:
-        hook_params = {}
-    return hook_class(**{hook.connection_id_attribute_name: connection.conn_id}, **hook_params)
-
-
-class SqlToSlackOperator(BaseOperator):
-    """
-    Executes an SQL statement in a given SQL connection and sends the results to Slack. The results of the
-    query are rendered into the 'slack_message' parameter as a Pandas dataframe using a JINJA variable called
-    '{{ results_df }}'. The 'results_df' variable name can be changed by specifying a different
-    'results_df_name' parameter. The Tabulate library is added to the JINJA environment as a filter to
-    allow the dataframe to be rendered nicely. For example, set 'slack_message' to {{ results_df |
-    tabulate(tablefmt="pretty", headers="keys") }} to send the results to Slack as an ascii rendered table.
+    Executes an SQL statement in a given SQL connection and sends the results to Slack API as file.
 
     .. seealso::
         For more information on how to use this operator, take a look at the guide:
-        :ref:`howto/operator:SqlToSlackOperator`
+        :ref:`howto/operator:SqlToSlackApiFileOperator`
 
-    :param sql: The SQL statement to execute on Snowflake (templated)
-    :param slack_message: The templated Slack message to send with the data returned from Snowflake.
-        You can use the default JINJA variable {{ results_df }} to access the pandas dataframe containing the
-        SQL results
-    :param sql_conn_id: Reference to
-        :ref:`Snowflake connection id<howto/connection:snowflake>`
+    :param sql: The SQL query to be executed
+    :param sql_conn_id: reference to a specific DB-API Connection.
+    :param slack_conn_id: :ref:`Slack API Connection <howto/connection:slack>`.
+    :param slack_filename: Filename for display in slack.
+        Should contain supported extension which referenced to ``SUPPORTED_FILE_FORMATS``.
+        It is also possible to set compression in extension:
+        ``filename.csv.gzip``, ``filename.json.zip``, etc.
     :param sql_hook_params: Extra config params to be passed to the underlying hook.
-           Should match the desired hook constructor params.
-    :param slack_conn_id: The connection id for Slack.
-    :param slack_webhook_token: The token to use to authenticate to Slack. If this is not provided, the
-        'slack_conn_id' attribute needs to be specified in the 'password' field.
-    :param slack_channel: The channel to send message. Override default from Slack connection.
-    :param results_df_name: The name of the JINJA template's dataframe variable, default is 'results_df'
-    :param parameters: The parameters to pass to the SQL query
+        Should match the desired hook constructor params.
+    :param parameters: The parameters to pass to the SQL query.
+    :param slack_channels: Comma-separated list of channel names or IDs where the file will be shared.
+         If omitting this parameter, then file will send to workspace.
+    :param slack_initial_comment: The message text introducing the file in specified ``slack_channels``.
+    :param slack_title: Title of file.
+    :param slack_base_url: A string representing the Slack API base URL. Optional
+    :param slack_method_version: The version of the Slack SDK Client method to be used, either "v1" or "v2".
+    :param df_kwargs: Keyword arguments forwarded to ``pandas.DataFrame.to_{format}()`` method.
     """
 
-    template_fields: Sequence[str] = ('sql', 'slack_message')
-    template_ext: Sequence[str] = ('.sql', '.jinja', '.j2')
+    template_fields: Sequence[str] = (
+        "sql",
+        "slack_channels",
+        "slack_filename",
+        "slack_initial_comment",
+        "slack_title",
+    )
+    template_ext: Sequence[str] = (".sql", ".jinja", ".j2")
     template_fields_renderers = {"sql": "sql", "slack_message": "jinja"}
-    times_rendered = 0
+
+    SUPPORTED_FILE_FORMATS: Sequence[str] = ("csv", "json", "html")
 
     def __init__(
         self,
         *,
         sql: str,
         sql_conn_id: str,
-        sql_hook_params: Optional[dict] = None,
-        slack_conn_id: Optional[str] = None,
-        slack_webhook_token: Optional[str] = None,
-        slack_channel: Optional[str] = None,
-        slack_message: str,
-        results_df_name: str = 'results_df',
-        parameters: Optional[Union[Iterable, Mapping]] = None,
+        sql_hook_params: dict | None = None,
+        parameters: list | tuple | Mapping[str, Any] | None = None,
+        slack_conn_id: str = SlackHook.default_conn_name,
+        slack_filename: str,
+        slack_channels: str | Sequence[str] | None = None,
+        slack_initial_comment: str | None = None,
+        slack_title: str | None = None,
+        slack_base_url: str | None = None,
+        slack_method_version: Literal["v1", "v2"] = "v1",
+        df_kwargs: dict | None = None,
         **kwargs,
-    ) -> None:
-
-        super().__init__(**kwargs)
-
-        self.sql_conn_id = sql_conn_id
-        self.sql_hook_params = sql_hook_params
-        self.sql = sql
-        self.parameters = parameters
+    ):
+        super().__init__(
+            sql=sql, sql_conn_id=sql_conn_id, sql_hook_params=sql_hook_params, parameters=parameters, **kwargs
+        )
         self.slack_conn_id = slack_conn_id
-        self.slack_webhook_token = slack_webhook_token
-        self.slack_channel = slack_channel
-        self.slack_message = slack_message
-        self.results_df_name = results_df_name
-        self.kwargs = kwargs
+        self.slack_filename = slack_filename
+        self.slack_channels = slack_channels
+        self.slack_initial_comment = slack_initial_comment
+        self.slack_title = slack_title
+        self.slack_base_url = slack_base_url
+        self.slack_method_version = slack_method_version
+        self.df_kwargs = df_kwargs or {}
 
-        if not self.slack_conn_id and not self.slack_webhook_token:
-            raise AirflowException(
-                "SqlToSlackOperator requires either a `slack_conn_id` or a `slack_webhook_token` argument"
-            )
-
-    def _get_hook(self) -> DbApiHook:
-        self.log.debug("Get connection for %s", self.sql_conn_id)
-        conn = BaseHook.get_connection(self.sql_conn_id)
-        if version >= '2.3':
-            # "hook_params" were introduced to into "get_hook()" only in Airflow 2.3.
-            hook = conn.get_hook(hook_params=self.sql_hook_params)  # ignore airflow compat check
-        else:
-            # For supporting Airflow versions < 2.3, we backport "get_hook()" method. This should be removed
-            # when "apache-airflow-providers-slack" will depend on Airflow >= 2.3.
-            hook = _backported_get_hook(conn, hook_params=self.sql_hook_params)
-        if not callable(getattr(hook, 'get_pandas_df', None)):
-            raise AirflowException(
-                "This hook is not supported. The hook class must have get_pandas_df method."
-            )
-        return hook
-
-    def _get_query_results(self) -> DataFrame:
-        sql_hook = self._get_hook()
-
-        self.log.info('Running SQL query: %s', self.sql)
-        df = sql_hook.get_pandas_df(self.sql, parameters=self.parameters)
-        return df
-
-    def _render_and_send_slack_message(self, context, df) -> None:
-        # Put the dataframe into the context and render the JINJA template fields
-        context[self.results_df_name] = df
-        self.render_template_fields(context)
-
-        slack_hook = self._get_slack_hook()
-        self.log.info('Sending slack message: %s', self.slack_message)
-        slack_hook.execute()
-
-    def _get_slack_hook(self) -> SlackWebhookHook:
-        return SlackWebhookHook(
-            http_conn_id=self.slack_conn_id,
-            message=self.slack_message,
-            channel=self.slack_channel,
-            webhook_token=self.slack_webhook_token,
+    @cached_property
+    def slack_hook(self):
+        """Slack API Hook."""
+        return SlackHook(
+            slack_conn_id=self.slack_conn_id,
+            base_url=self.slack_base_url,
+            timeout=self.slack_timeout,
+            proxy=self.slack_proxy,
+            retry_handlers=self.slack_retry_handlers,
         )
 
-    def render_template_fields(self, context, jinja_env=None) -> None:
-        # If this is the first render of the template fields, exclude slack_message from rendering since
-        # the snowflake results haven't been retrieved yet.
-        if self.times_rendered == 0:
-            fields_to_render: Iterable[str] = filter(lambda x: x != 'slack_message', self.template_fields)
-        else:
-            fields_to_render = self.template_fields
+    @property
+    def _method_resolver(self):
+        if self.slack_method_version == "v1":
+            return self.slack_hook.send_file
+        return self.slack_hook.send_file_v1_to_v2
 
-        if not jinja_env:
-            jinja_env = self.get_template_env()
+    def execute(self, context: Context) -> None:
+        # Parse file format from filename
+        output_file_format, _ = parse_filename(
+            filename=self.slack_filename,
+            supported_file_formats=self.SUPPORTED_FILE_FORMATS,
+        )
 
-        # Add the tabulate library into the JINJA environment
-        jinja_env.filters['tabulate'] = tabulate
+        with NamedTemporaryFile(mode="w+", suffix=f"_{self.slack_filename}") as fp:
+            # tempfile.NamedTemporaryFile used only for create and remove temporary file,
+            # pandas will open file in correct mode itself depend on file type.
+            # So we close file descriptor here for avoid incidentally write anything.
+            fp.close()
 
-        self._do_render_template_fields(self, fields_to_render, context, jinja_env, set())
-        self.times_rendered += 1
+            output_file_name = fp.name
+            output_file_format = output_file_format.upper()
+            df_result = self._get_query_results()
+            if output_file_format == "CSV":
+                df_result.to_csv(output_file_name, **self.df_kwargs)
+            elif output_file_format == "JSON":
+                df_result.to_json(output_file_name, **self.df_kwargs)
+            elif output_file_format == "HTML":
+                df_result.to_html(output_file_name, **self.df_kwargs)
+            else:
+                # Not expected that this error happen. This only possible
+                # if SUPPORTED_FILE_FORMATS extended and no actual implementation for specific format.
+                raise AirflowException(f"Unexpected output file format: {output_file_format}")
 
-    def execute(self, context: 'Context') -> None:
-        if not isinstance(self.sql, str):
-            raise AirflowException("Expected 'sql' parameter should be a string.")
-        if self.sql is None or self.sql.strip() == "":
-            raise AirflowException("Expected 'sql' parameter is missing.")
-        if self.slack_message is None or self.slack_message.strip() == "":
-            raise AirflowException("Expected 'slack_message' parameter is missing.")
+            self._method_resolver(
+                channels=self.slack_channels,
+                file=output_file_name,
+                filename=self.slack_filename,
+                initial_comment=self.slack_initial_comment,
+                title=self.slack_title,
+            )
 
-        df = self._get_query_results()
-        self._render_and_send_slack_message(context, df)
 
-        self.log.debug('Finished sending SQL data to Slack')
+@deprecated(
+    reason=(
+        "`airflow.providers.slack.transfers.sql_to_slack.SqlToSlackOperator` has been renamed "
+        "and moved `airflow.providers.slack.transfers.sql_to_slack_webhook.SqlToSlackWebhookOperator` "
+        "this operator deprecated and will be removed in future"
+    ),
+    category=AirflowProviderDeprecationWarning,
+)
+class SqlToSlackOperator(SqlToSlackWebhookOperator):
+    """
+    Executes an SQL statement in a given SQL connection and sends the results to Slack Incoming Webhook.
+
+    Deprecated, use :class:`airflow.providers.slack.transfers.sql_to_slack_webhook.SqlToSlackWebhookOperator`
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)

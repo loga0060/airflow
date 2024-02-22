@@ -15,20 +15,27 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-from typing import TYPE_CHECKING, Iterable, Mapping, Optional, Sequence, Union
+from __future__ import annotations
 
-import sqlparse
+from typing import Sequence
 
-from airflow.models import BaseOperator
-from airflow.providers.apache.drill.hooks.drill import DrillHook
+from deprecated import deprecated
 
-if TYPE_CHECKING:
-    from airflow.utils.context import Context
+from airflow.exceptions import AirflowProviderDeprecationWarning
+from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 
 
-class DrillOperator(BaseOperator):
+@deprecated(
+    reason="Please use `airflow.providers.common.sql.operators.sql.SQLExecuteQueryOperator`.",
+    category=AirflowProviderDeprecationWarning,
+)
+class DrillOperator(SQLExecuteQueryOperator):
     """
     Executes the provided SQL in the identified Drill environment.
+
+    This class is deprecated.
+
+    Please use :class:`airflow.providers.common.sql.operators.sql.SQLExecuteQueryOperator`.
 
     .. seealso::
         For more information on how to use this operator, take a look at the guide:
@@ -42,28 +49,10 @@ class DrillOperator(BaseOperator):
     :param parameters: (optional) the parameters to render the SQL query with.
     """
 
-    template_fields: Sequence[str] = ('sql',)
-    template_fields_renderers = {'sql': 'sql'}
-    template_ext: Sequence[str] = ('.sql',)
-    ui_color = '#ededed'
+    template_fields: Sequence[str] = ("sql",)
+    template_fields_renderers = {"sql": "sql"}
+    template_ext: Sequence[str] = (".sql",)
+    ui_color = "#ededed"
 
-    def __init__(
-        self,
-        *,
-        sql: str,
-        drill_conn_id: str = 'drill_default',
-        parameters: Optional[Union[Mapping, Iterable]] = None,
-        **kwargs,
-    ) -> None:
-        super().__init__(**kwargs)
-        self.sql = sql
-        self.drill_conn_id = drill_conn_id
-        self.parameters = parameters
-        self.hook: Optional[DrillHook] = None
-
-    def execute(self, context: 'Context'):
-        self.log.info('Executing: %s on %s', self.sql, self.drill_conn_id)
-        self.hook = DrillHook(drill_conn_id=self.drill_conn_id)
-        sql = sqlparse.split(sqlparse.format(self.sql, strip_comments=True))
-        no_term_sql = [s[:-1] for s in sql if s[-1] == ';']
-        self.hook.run(no_term_sql, parameters=self.parameters)
+    def __init__(self, *, drill_conn_id: str = "drill_default", **kwargs) -> None:
+        super().__init__(conn_id=drill_conn_id, **kwargs)

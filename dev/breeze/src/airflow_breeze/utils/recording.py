@@ -14,24 +14,29 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
 
 import atexit
 import os
-from typing import Optional
-
-import rich
-from rich.console import Console
+import sys
+from copy import deepcopy
+from typing import IO, TYPE_CHECKING
 
 from airflow_breeze.utils.path_utils import in_autocomplete
 
-output_file_for_recording = os.environ.get('RECORD_BREEZE_OUTPUT_FILE')
+if TYPE_CHECKING:
+    from rich.console import Console
 
-help_console: Optional[Console] = None
+help_console: Console | None = None
 
 DEFAULT_COLUMNS = 129
 
 
-def enable_recording_of_help_output(path: str, title: Optional[str], width: Optional[str]):
+def generating_command_images() -> bool:
+    return "RECORD_BREEZE_TITLE" in os.environ or "regenerate-command-images" in sys.argv
+
+
+def enable_recording_of_help_output(path: str, title: str | None, width: str | None, unique_id: str | None):
     import rich_click as click
 
     if not title:
@@ -43,29 +48,41 @@ def enable_recording_of_help_output(path: str, title: Optional[str], width: Opti
 
     def save_ouput_as_svg():
         if help_console:
-            help_console.save_svg(path=path, title=title)
-
-    class RecordingConsole(rich.console.Console):
-        def __init__(self, **kwargs):
-            kwargs["force_terminal"] = True
-            kwargs["width"] = width_int
-            super().__init__(record=True, **kwargs)
-            global help_console
-            help_console = self
+            help_console.save_svg(path=path, title=title, unique_id=unique_id)
 
     atexit.register(save_ouput_as_svg)
     click.rich_click.MAX_WIDTH = width_int
     click.formatting.FORCED_WIDTH = width_int - 2  # type: ignore[attr-defined]
     click.rich_click.COLOR_SYSTEM = "standard"
-    # monkeypatch rich_click console to record help (rich_click does not allow passing extra args to console)
-    click.rich_click.Console = RecordingConsole  # type: ignore[misc]
+    # monkeypatch rich_click console to record help
+    import rich_click
+
+    original_create_console = rich_click.rich_help_formatter.create_console
+
+    from rich_click import RichHelpConfiguration
+
+    def create_recording_console(config: RichHelpConfiguration, file: IO[str] | None = None) -> Console:
+        recording_config = deepcopy(config)
+        recording_config.width = width_int
+        recording_config.force_terminal = True
+        recording_console = original_create_console(recording_config, file)
+        recording_console.record = True
+        global help_console
+        help_console = recording_console
+        return recording_console
+
+    rich_click.rich_help_formatter.create_console = create_recording_console
 
 
-if output_file_for_recording and not in_autocomplete():
+output_file = os.environ.get("RECORD_BREEZE_OUTPUT_FILE")
+
+
+if output_file and not in_autocomplete():
     enable_recording_of_help_output(
-        path=output_file_for_recording,
-        title=os.environ.get('RECORD_BREEZE_TITLE'),
-        width=os.environ.get('RECORD_BREEZE_WIDTH'),
+        path=output_file,
+        title=os.environ.get("RECORD_BREEZE_TITLE"),
+        width=os.environ.get("RECORD_BREEZE_WIDTH"),
+        unique_id=os.environ.get("RECORD_BREEZE_UNIQUE_ID"),
     )
 else:
     try:

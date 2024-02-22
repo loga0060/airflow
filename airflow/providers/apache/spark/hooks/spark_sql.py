@@ -15,9 +15,10 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-#
+from __future__ import annotations
+
 import subprocess
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 from airflow.exceptions import AirflowException, AirflowNotFoundException
 from airflow.hooks.base import BaseHook
@@ -28,8 +29,7 @@ if TYPE_CHECKING:
 
 class SparkSqlHook(BaseHook):
     """
-    This hook is a wrapper around the spark-sql binary. It requires that the
-    "spark-sql" binary is in the PATH.
+    This hook is a wrapper around the spark-sql binary; requires the "spark-sql" binary to be in the PATH.
 
     :param sql: The SQL query to execute
     :param conf: arbitrary Spark configuration property
@@ -49,30 +49,55 @@ class SparkSqlHook(BaseHook):
         (Default: The ``queue`` value set in the Connection, or ``"default"``)
     """
 
-    conn_name_attr = 'conn_id'
-    default_conn_name = 'spark_sql_default'
-    conn_type = 'spark_sql'
-    hook_name = 'Spark SQL'
+    conn_name_attr = "conn_id"
+    default_conn_name = "spark_sql_default"
+    conn_type = "spark_sql"
+    hook_name = "Spark SQL"
+
+    @classmethod
+    def get_ui_field_behaviour(cls) -> dict[str, Any]:
+        """Return custom UI field behaviour for Spark SQL connection."""
+        return {
+            "hidden_fields": ["schema", "login", "password", "extra"],
+            "relabeling": {},
+        }
+
+    @classmethod
+    def get_connection_form_widgets(cls) -> dict[str, Any]:
+        """Return connection widgets to add to Spark SQL connection form."""
+        from flask_appbuilder.fieldwidgets import BS3TextFieldWidget
+        from flask_babel import lazy_gettext
+        from wtforms import StringField
+        from wtforms.validators import Optional
+
+        return {
+            "queue": StringField(
+                lazy_gettext("YARN queue"),
+                widget=BS3TextFieldWidget(),
+                description="Default YARN queue to use",
+                validators=[Optional()],
+            )
+        }
 
     def __init__(
         self,
         sql: str,
-        conf: Optional[str] = None,
+        conf: str | None = None,
         conn_id: str = default_conn_name,
-        total_executor_cores: Optional[int] = None,
-        executor_cores: Optional[int] = None,
-        executor_memory: Optional[str] = None,
-        keytab: Optional[str] = None,
-        principal: Optional[str] = None,
-        master: Optional[str] = None,
-        name: str = 'default-name',
-        num_executors: Optional[int] = None,
+        total_executor_cores: int | None = None,
+        executor_cores: int | None = None,
+        executor_memory: str | None = None,
+        keytab: str | None = None,
+        principal: str | None = None,
+        master: str | None = None,
+        name: str = "default-name",
+        num_executors: int | None = None,
         verbose: bool = True,
-        yarn_queue: Optional[str] = None,
+        yarn_queue: str | None = None,
     ) -> None:
         super().__init__()
-        options: Dict = {}
-        conn: Optional[Connection] = None
+        options: dict = {}
+        conn: Connection | None = None
 
         try:
             conn = self.get_connection(conn_id)
@@ -109,10 +134,9 @@ class SparkSqlHook(BaseHook):
     def get_conn(self) -> Any:
         pass
 
-    def _prepare_command(self, cmd: Union[str, List[str]]) -> List[str]:
+    def _prepare_command(self, cmd: str | list[str]) -> list[str]:
         """
-        Construct the spark-sql command to execute. Verbose output is enabled
-        as default.
+        Construct the spark-sql command to execute. Verbose output is enabled as default.
 
         :param cmd: command to append to the spark-sql command
         :return: full command to be executed
@@ -135,7 +159,7 @@ class SparkSqlHook(BaseHook):
             connection_cmd += ["--num-executors", str(self._num_executors)]
         if self._sql:
             sql = self._sql.strip()
-            if sql.endswith(".sql") or sql.endswith(".hql"):
+            if sql.endswith((".sql", ".hql")):
                 connection_cmd += ["-f", sql]
             else:
                 connection_cmd += ["-e", sql]
@@ -161,7 +185,7 @@ class SparkSqlHook(BaseHook):
 
     def run_query(self, cmd: str = "", **kwargs: Any) -> None:
         """
-        Remote Popen (actually execute the Spark-sql query)
+        Remote Popen (actually execute the Spark-sql query).
 
         :param cmd: command to append to the spark-sql command
         :param kwargs: extra arguments to Popen (see subprocess.Popen)
@@ -184,7 +208,7 @@ class SparkSqlHook(BaseHook):
             )
 
     def kill(self) -> None:
-        """Kill Spark job"""
+        """Kill Spark job."""
         if self._sp and self._sp.poll() is None:
             self.log.info("Killing the Spark-Sql job")
             self._sp.kill()

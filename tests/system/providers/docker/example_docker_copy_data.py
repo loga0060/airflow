@@ -15,7 +15,6 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-
 """
 This sample "listen to directory". move the new file and print it,
 using docker-containers.
@@ -24,6 +23,8 @@ BashOperator & ShortCircuitOperator.
 TODO: Review the workflow, change it accordingly to
 your environment & enable the code.
 """
+from __future__ import annotations
+
 import os
 from datetime import datetime
 
@@ -35,16 +36,15 @@ from airflow.operators.python import ShortCircuitOperator
 from airflow.providers.docker.operators.docker import DockerOperator
 
 ENV_ID = os.environ.get("SYSTEM_TESTS_ENV_ID")
-DAG_ID = 'docker_sample_copy_data'
+DAG_ID = "docker_sample_copy_data"
 
 with models.DAG(
     DAG_ID,
-    schedule_interval="@once",
+    schedule="@once",
     start_date=datetime(2021, 1, 1),
     catchup=False,
     tags=["example", "docker"],
 ) as dag:
-
     locate_file_cmd = """
         sleep 10
         find {{params.source_location}} -type f  -printf "%f\n" | head -1
@@ -78,8 +78,8 @@ with models.DAG(
             "/bin/bash",
             "-c",
             "/bin/sleep 30; "
-            "/bin/mv {{ params.source_location }}/" + str(t_view.output) + " {{ params.target_location }};"
-            "/bin/echo '{{ params.target_location }}/" + f"{t_view.output}';",
+            f"/bin/mv {{{{ params.source_location }}}}/{t_view.output} {{{{ params.target_location }}}};"
+            f"/bin/echo '{{{{ params.target_location }}}}/{t_view.output}';",
         ],
         task_id="move_data",
         do_xcom_push=True,
@@ -99,9 +99,7 @@ with models.DAG(
 
     (
         # TEST BODY
-        t_is_data_available
-        >> t_move
-        >> t_print
+        t_is_data_available >> t_move >> t_print
     )
 
 from tests.system.utils import get_test_run  # noqa: E402

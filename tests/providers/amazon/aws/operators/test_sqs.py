@@ -15,54 +15,107 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
 
+from unittest import mock
 
-import unittest
-from unittest.mock import MagicMock
+import pytest
+from botocore.exceptions import ClientError
+from moto import mock_aws
 
-from moto import mock_sqs
-
-from airflow.models.dag import DAG
 from airflow.providers.amazon.aws.hooks.sqs import SqsHook
 from airflow.providers.amazon.aws.operators.sqs import SqsPublishOperator
-from airflow.utils import timezone
 
-DEFAULT_DATE = timezone.datetime(2019, 1, 1)
+REGION_NAME = "eu-west-1"
+QUEUE_NAME = "test-queue"
+QUEUE_URL = f"https://{QUEUE_NAME}"
+FIFO_QUEUE_NAME = "test-queue.fifo"
+FIFO_QUEUE_URL = f"https://{FIFO_QUEUE_NAME}"
 
-QUEUE_NAME = 'test-queue'
-QUEUE_URL = f'https://{QUEUE_NAME}'
+
+@pytest.fixture
+def mocked_context():
+    return mock.MagicMock(name="FakeContext")
 
 
-class TestSqsPublishOperator(unittest.TestCase):
-    def setUp(self):
-        args = {'owner': 'airflow', 'start_date': DEFAULT_DATE}
+class TestSqsPublishOperator:
+    @pytest.fixture(autouse=True)
+    def setup_test_cases(self):
+        self.default_op_kwargs = {
+            "task_id": "test_task",
+            "message_content": "hello",
+            "aws_conn_id": None,
+            "region_name": REGION_NAME,
+        }
+        self.sqs_client = SqsHook(aws_conn_id=None, region_name=REGION_NAME).conn
 
-        self.dag = DAG('test_dag_id', default_args=args)
-        self.operator = SqsPublishOperator(
-            task_id='test_task',
-            dag=self.dag,
-            sqs_queue=QUEUE_URL,
-            message_content='hello',
-            aws_conn_id='aws_default',
+    def test_init(self):
+        self.default_op_kwargs.pop("aws_conn_id", None)
+        self.default_op_kwargs.pop("region_name", None)
+
+        op = SqsPublishOperator(sqs_queue=QUEUE_NAME, **self.default_op_kwargs)
+        assert op.hook.aws_conn_id == "aws_default"
+        assert op.hook._region_name is None
+        assert op.hook._verify is None
+        assert op.hook._config is None
+
+        op = SqsPublishOperator(
+            sqs_queue=FIFO_QUEUE_NAME,
+            **self.default_op_kwargs,
+            aws_conn_id=None,
+            region_name=REGION_NAME,
+            verify="/spam/egg.pem",
+            botocore_config={"read_timeout": 42},
+        )
+        assert op.hook.aws_conn_id is None
+        assert op.hook._region_name == REGION_NAME
+        assert op.hook._verify == "/spam/egg.pem"
+        assert op.hook._config is not None
+        assert op.hook._config.read_timeout == 42
+
+    @mock_aws
+    def test_execute_success(self, mocked_context):
+        self.sqs_client.create_queue(QueueName=QUEUE_NAME)
+
+        # Send SQS Message
+        op = SqsPublishOperator(**self.default_op_kwargs, sqs_queue=QUEUE_NAME)
+        result = op.execute(mocked_context)
+        assert "MD5OfMessageBody" in result
+        assert "MessageId" in result
+
+        # Validate message through moto
+        message = self.sqs_client.receive_message(QueueUrl=QUEUE_URL)
+        assert len(message["Messages"]) == 1
+        assert message["Messages"][0]["MessageId"] == result["MessageId"]
+        assert message["Messages"][0]["Body"] == "hello"
+
+    @mock_aws
+    def test_execute_failure_fifo_queue(self, mocked_context):
+        self.sqs_client.create_queue(QueueName=FIFO_QUEUE_NAME, Attributes={"FifoQueue": "true"})
+
+        op = SqsPublishOperator(**self.default_op_kwargs, sqs_queue=FIFO_QUEUE_NAME)
+        error_message = (
+            "An error occurred \(MissingParameter\) when calling the SendMessage operation: "
+            "The request must contain the parameter MessageGroupId."
+        )
+        with pytest.raises(ClientError, match=error_message):
+            op.execute(mocked_context)
+
+    @mock_aws
+    def test_execute_success_fifo_queue(self, mocked_context):
+        self.sqs_client.create_queue(
+            QueueName=FIFO_QUEUE_NAME, Attributes={"FifoQueue": "true", "ContentBasedDeduplication": "true"}
         )
 
-        self.mock_context = MagicMock()
-        self.sqs_hook = SqsHook()
+        # Send SQS Message into the FIFO Queue
+        op = SqsPublishOperator(**self.default_op_kwargs, sqs_queue=FIFO_QUEUE_NAME, message_group_id="abc")
+        result = op.execute(mocked_context)
+        assert "MD5OfMessageBody" in result
+        assert "MessageId" in result
 
-    @mock_sqs
-    def test_execute_success(self):
-        self.sqs_hook.create_queue(QUEUE_NAME)
-
-        result = self.operator.execute(self.mock_context)
-        assert 'MD5OfMessageBody' in result
-        assert 'MessageId' in result
-
-        message = self.sqs_hook.get_conn().receive_message(QueueUrl=QUEUE_URL)
-
-        assert len(message['Messages']) == 1
-        assert message['Messages'][0]['MessageId'] == result['MessageId']
-        assert message['Messages'][0]['Body'] == 'hello'
-
-        context_calls = []
-
-        assert self.mock_context['ti'].method_calls == context_calls, "context call  should be same"
+        # Validate message through moto
+        message = self.sqs_client.receive_message(QueueUrl=FIFO_QUEUE_URL, AttributeNames=["MessageGroupId"])
+        assert len(message["Messages"]) == 1
+        assert message["Messages"][0]["MessageId"] == result["MessageId"]
+        assert message["Messages"][0]["Body"] == "hello"
+        assert message["Messages"][0]["Attributes"]["MessageGroupId"] == "abc"

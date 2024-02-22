@@ -25,11 +25,6 @@ IN_CONTAINER_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 . "${IN_CONTAINER_DIR}/_in_container_utils.sh"
 if [[ ${IN_CONTAINER_INITIALIZED=} != "true" ]]; then
     in_container_set_colors
-    in_container_basic_sanity_check
+    in_container_basic_check
     in_container_script_start
-
-    add_trap "in_container_fix_ownership" EXIT HUP INT TERM
-    add_trap "in_container_clear_tmp" EXIT HUP INT TERM
-    add_trap "in_container_script_end" EXIT HUP INT TERM
-    export IN_CONTAINER_INITIALIZED="true"
 fi

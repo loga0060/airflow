@@ -19,10 +19,18 @@
 ``apache-airflow-providers-snowflake``
 ======================================
 
-Content
--------
 
 .. toctree::
+    :hidden:
+    :maxdepth: 1
+    :caption: Basics
+
+    Home <self>
+    Changelog <changelog>
+    Security <security>
+
+.. toctree::
+    :hidden:
     :maxdepth: 1
     :caption: Guides
 
@@ -30,6 +38,7 @@ Content
     Operators <operators/index>
 
 .. toctree::
+    :hidden:
     :maxdepth: 1
     :caption: References
 
@@ -37,15 +46,17 @@ Content
 
 .. toctree::
     :hidden:
+    :maxdepth: 1
     :caption: System tests
 
     System Tests <_api/tests/system/providers/snowflake/index>
 
 .. toctree::
+    :hidden:
     :maxdepth: 1
     :caption: Resources
 
-    Example DAGs <https://github.com/apache/airflow/tree/providers-snowflake/3.0.0/tests/system/providers/snowflake>
+    Example DAGs <https://github.com/apache/airflow/tree/providers-snowflake/|version|/tests/system/providers/snowflake>
     PyPI Repository <https://pypi.org/project/apache-airflow-providers-snowflake/>
     Installing from sources <installing-providers-from-sources>
 
@@ -53,43 +64,47 @@ Content
 
 
 .. toctree::
+    :hidden:
     :maxdepth: 1
     :caption: Commits
 
     Detailed list of commits <commits>
 
 
-Package apache-airflow-providers-snowflake
+apache-airflow-providers-snowflake package
 ------------------------------------------------------
 
 `Snowflake <https://www.snowflake.com/>`__
 
 
-Release: 3.0.0
+Release: 5.3.1
 
 Provider package
 ----------------
 
-This is a provider package for ``snowflake`` provider. All classes for this provider package
-are in ``airflow.providers.snowflake`` python package.
+This package is for the ``snowflake`` provider.
+All classes for this package are included in the ``airflow.providers.snowflake`` python package.
 
 Installation
 ------------
 
-You can install this package on top of an existing Airflow 2 installation (see ``Requirements`` below)
-for the minimum Airflow version supported) via
-``pip install apache-airflow-providers-snowflake``
+You can install this package on top of an existing Airflow 2 installation via
+``pip install apache-airflow-providers-snowflake``.
+For the minimum Airflow version supported, see ``Requirements`` below.
 
 Requirements
 ------------
 
-==============================  ==================
-PIP package                     Version required
-==============================  ==================
-``apache-airflow``              ``>=2.2.0``
-``snowflake-connector-python``  ``>=2.4.1``
-``snowflake-sqlalchemy``        ``>=1.1.0``
-==============================  ==================
+The minimum Apache Airflow version supported by this provider package is ``2.6.0``.
+
+=======================================  ==================
+PIP package                              Version required
+=======================================  ==================
+``apache-airflow``                       ``>=2.6.0``
+``apache-airflow-providers-common-sql``  ``>=1.10.0``
+``snowflake-connector-python``           ``>=2.7.8``
+``snowflake-sqlalchemy``                 ``>=1.1.0``
+=======================================  ==================
 
 Cross provider package dependencies
 -----------------------------------
@@ -101,14 +116,15 @@ You can install such cross-provider dependencies when installing from PyPI. For 
 
 .. code-block:: bash
 
-    pip install apache-airflow-providers-snowflake[slack]
+    pip install apache-airflow-providers-snowflake[common.sql]
 
 
-==================================================================================================  =========
-Dependent package                                                                                   Extra
-==================================================================================================  =========
-`apache-airflow-providers-slack <https://airflow.apache.org/docs/apache-airflow-providers-slack>`_  ``slack``
-==================================================================================================  =========
+==============================================================================================================  ===============
+Dependent package                                                                                               Extra
+==============================================================================================================  ===============
+`apache-airflow-providers-common-sql <https://airflow.apache.org/docs/apache-airflow-providers-common-sql>`_    ``common.sql``
+`apache-airflow-providers-openlineage <https://airflow.apache.org/docs/apache-airflow-providers-openlineage>`_  ``openlineage``
+==============================================================================================================  ===============
 
 Downloading official packages
 -----------------------------
@@ -116,7 +132,5 @@ Downloading official packages
 You can download officially released packages and verify their checksums and signatures from the
 `Official Apache Download site <https://downloads.apache.org/airflow/providers/>`_
 
-* `The apache-airflow-providers-snowflake 3.0.0 sdist package <https://downloads.apache.org/airflow/providers/apache-airflow-providers-snowflake-3.0.0.tar.gz>`_ (`asc <https://downloads.apache.org/airflow/providers/apache-airflow-providers-snowflake-3.0.0.tar.gz.asc>`__, `sha512 <https://downloads.apache.org/airflow/providers/apache-airflow-providers-snowflake-3.0.0.tar.gz.sha512>`__)
-* `The apache-airflow-providers-snowflake 3.0.0 wheel package <https://downloads.apache.org/airflow/providers/apache_airflow_providers_snowflake-3.0.0-py3-none-any.whl>`_ (`asc <https://downloads.apache.org/airflow/providers/apache_airflow_providers_snowflake-3.0.0-py3-none-any.whl.asc>`__, `sha512 <https://downloads.apache.org/airflow/providers/apache_airflow_providers_snowflake-3.0.0-py3-none-any.whl.sha512>`__)
-
-.. include:: ../../airflow/providers/snowflake/CHANGELOG.rst
+* `The apache-airflow-providers-snowflake 5.3.1 sdist package <https://downloads.apache.org/airflow/providers/apache-airflow-providers-snowflake-5.3.1.tar.gz>`_ (`asc <https://downloads.apache.org/airflow/providers/apache-airflow-providers-snowflake-5.3.1.tar.gz.asc>`__, `sha512 <https://downloads.apache.org/airflow/providers/apache-airflow-providers-snowflake-5.3.1.tar.gz.sha512>`__)
+* `The apache-airflow-providers-snowflake 5.3.1 wheel package <https://downloads.apache.org/airflow/providers/apache_airflow_providers_snowflake-5.3.1-py3-none-any.whl>`_ (`asc <https://downloads.apache.org/airflow/providers/apache_airflow_providers_snowflake-5.3.1-py3-none-any.whl.asc>`__, `sha512 <https://downloads.apache.org/airflow/providers/apache_airflow_providers_snowflake-5.3.1-py3-none-any.whl.sha512>`__)

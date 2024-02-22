@@ -14,20 +14,23 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
 
-from typing import Dict, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, Sequence
 
 from google.api_core.gapic_v1.method import DEFAULT, _MethodDefault
-from google.api_core.operation import Operation
-from google.api_core.retry import Retry
 from google.cloud.workflows.executions_v1beta import Execution, ExecutionsClient
-from google.cloud.workflows.executions_v1beta.services.executions.pagers import ListExecutionsPager
 from google.cloud.workflows_v1beta import Workflow, WorkflowsClient
-from google.cloud.workflows_v1beta.services.workflows.pagers import ListWorkflowsPager
-from google.protobuf.field_mask_pb2 import FieldMask
 
 from airflow.providers.google.common.consts import CLIENT_INFO
 from airflow.providers.google.common.hooks.base_google import PROVIDE_PROJECT_ID, GoogleBaseHook
+
+if TYPE_CHECKING:
+    from google.api_core.operation import Operation
+    from google.api_core.retry import Retry
+    from google.cloud.workflows.executions_v1beta.services.executions.pagers import ListExecutionsPager
+    from google.cloud.workflows_v1beta.services.workflows.pagers import ListWorkflowsPager
+    from google.protobuf.field_mask_pb2 import FieldMask
 
 
 class WorkflowsHook(GoogleBaseHook):
@@ -38,30 +41,39 @@ class WorkflowsHook(GoogleBaseHook):
     keyword arguments rather than positional.
     """
 
+    def __init__(self, **kwargs):
+        if kwargs.get("delegate_to") is not None:
+            raise RuntimeError(
+                "The `delegate_to` parameter has been deprecated before and finally removed in this version"
+                " of Google Provider. You MUST convert it to `impersonate_chain`"
+            )
+        super().__init__(**kwargs)
+
     def get_workflows_client(self) -> WorkflowsClient:
-        """Returns WorkflowsClient."""
-        return WorkflowsClient(credentials=self._get_credentials(), client_info=CLIENT_INFO)
+        """Return WorkflowsClient object."""
+        return WorkflowsClient(credentials=self.get_credentials(), client_info=CLIENT_INFO)
 
     def get_executions_client(self) -> ExecutionsClient:
-        """Returns ExecutionsClient."""
-        return ExecutionsClient(credentials=self._get_credentials(), client_info=CLIENT_INFO)
+        """Return ExecutionsClient object."""
+        return ExecutionsClient(credentials=self.get_credentials(), client_info=CLIENT_INFO)
 
     @GoogleBaseHook.fallback_to_default_project_id
     def create_workflow(
         self,
-        workflow: Dict,
+        workflow: dict,
         workflow_id: str,
         location: str,
         project_id: str = PROVIDE_PROJECT_ID,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> Operation:
         """
-        Creates a new workflow. If a workflow with the specified name
-        already exists in the specified project and location, the long
-        running operation will return
-        [ALREADY_EXISTS][google.rpc.Code.ALREADY_EXISTS] error.
+        Create a new workflow.
+
+        If a workflow with the specified name already exists in the
+        specified project and location, the long running operation will
+        return [ALREADY_EXISTS][google.rpc.Code.ALREADY_EXISTS] error.
 
         :param workflow: Required. Workflow to be created.
         :param workflow_id: Required. The ID of the workflow to be created.
@@ -89,12 +101,12 @@ class WorkflowsHook(GoogleBaseHook):
         workflow_id: str,
         location: str,
         project_id: str = PROVIDE_PROJECT_ID,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> Workflow:
         """
-        Gets details of a single Workflow.
+        Get details of a single Workflow.
 
         :param workflow_id: Required. The ID of the workflow to be created.
         :param project_id: Required. The ID of the Google Cloud project the cluster belongs to.
@@ -112,14 +124,15 @@ class WorkflowsHook(GoogleBaseHook):
 
     def update_workflow(
         self,
-        workflow: Union[Dict, Workflow],
-        update_mask: Optional[FieldMask] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        workflow: dict | Workflow,
+        update_mask: FieldMask | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> Operation:
         """
-        Updates an existing workflow.
+        Update an existing workflow.
+
         Running this method has no impact on already running
         executions of the workflow. A new revision of the
         workflow may be created as a result of a successful
@@ -150,14 +163,12 @@ class WorkflowsHook(GoogleBaseHook):
         workflow_id: str,
         location: str,
         project_id: str = PROVIDE_PROJECT_ID,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> Operation:
         """
-        Deletes a workflow with the specified name.
-        This method also cancels and deletes all running
-        executions of the workflow.
+        Delete a workflow with the specified name and all running executions of the workflow.
 
         :param workflow_id: Required. The ID of the workflow to be created.
         :param project_id: Required. The ID of the Google Cloud project the cluster belongs to.
@@ -178,15 +189,14 @@ class WorkflowsHook(GoogleBaseHook):
         self,
         location: str,
         project_id: str = PROVIDE_PROJECT_ID,
-        filter_: Optional[str] = None,
-        order_by: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        filter_: str | None = None,
+        order_by: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> ListWorkflowsPager:
         """
-        Lists Workflows in a given project and location.
-        The default order is not specified.
+        List Workflows in a given project and location; the default order is not specified.
 
         :param filter_: Filter to restrict results to specific workflows.
         :param order_by: Comma-separated list of fields that
@@ -217,15 +227,14 @@ class WorkflowsHook(GoogleBaseHook):
         self,
         workflow_id: str,
         location: str,
-        execution: Dict,
+        execution: dict,
         project_id: str = PROVIDE_PROJECT_ID,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> Execution:
         """
-        Creates a new execution using the latest revision of
-        the given workflow.
+        Create a new execution using the latest revision of the given workflow.
 
         :param execution: Required. Input parameters of the execution represented as a dictionary.
         :param workflow_id: Required. The ID of the workflow.
@@ -240,6 +249,7 @@ class WorkflowsHook(GoogleBaseHook):
         metadata = metadata or ()
         client = self.get_executions_client()
         parent = f"projects/{project_id}/locations/{location}/workflows/{workflow_id}"
+        execution = {k: str(v) if isinstance(v, dict) else v for k, v in execution.items()}
         return client.create_execution(
             request={"parent": parent, "execution": execution},
             retry=retry,
@@ -254,12 +264,12 @@ class WorkflowsHook(GoogleBaseHook):
         execution_id: str,
         location: str,
         project_id: str = PROVIDE_PROJECT_ID,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> Execution:
         """
-        Returns an execution for the given ``workflow_id`` and ``execution_id``.
+        Return an execution for the given ``workflow_id`` and ``execution_id``.
 
         :param workflow_id: Required. The ID of the workflow.
         :param execution_id: Required. The ID of the execution.
@@ -283,12 +293,12 @@ class WorkflowsHook(GoogleBaseHook):
         execution_id: str,
         location: str,
         project_id: str = PROVIDE_PROJECT_ID,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> Execution:
         """
-        Cancels an execution using the given ``workflow_id`` and ``execution_id``.
+        Cancel an execution using the given ``workflow_id`` and ``execution_id``.
 
         :param workflow_id: Required. The ID of the workflow.
         :param execution_id: Required. The ID of the execution.
@@ -313,16 +323,15 @@ class WorkflowsHook(GoogleBaseHook):
         workflow_id: str,
         location: str,
         project_id: str = PROVIDE_PROJECT_ID,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> ListExecutionsPager:
         """
-        Returns a list of executions which belong to the
-        workflow with the given name. The method returns
-        executions of all workflow revisions. Returned
-        executions are ordered by their start time (newest
-        first).
+        Return a list of executions which belong to the workflow with the given name.
+
+        The method returns executions of all workflow revisions. Returned
+        executions are ordered by their start time (newest first).
 
         :param workflow_id: Required. The ID of the workflow to be created.
         :param project_id: Required. The ID of the Google Cloud project the cluster belongs to.

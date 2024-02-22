@@ -15,19 +15,16 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-# shellcheck source=scripts/ci/libraries/_script_init.sh
-. "$( dirname "${BASH_SOURCE[0]}" )/../libraries/_script_init.sh"
-
 SCRIPTS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd)"
 # This is an AMI that is based on Basic Amazon Linux AMI with installed and configured docker service
 WORKING_DIR="/tmp/armdocker"
 INSTANCE_INFO="${WORKING_DIR}/instance_info.json"
-ARM_AMI="ami-06b8158ea372d3259"
-INSTANCE_TYPE="c6g.xlarge"
-MARKET_OPTIONS="MarketType=spot,SpotOptions={MaxPrice=0.1,SpotInstanceType=one-time}"
+ARM_AMI="ami-0e43196369d299715"  # AMI ID of latest arm-docker-ami-v*
+INSTANCE_TYPE="m7g.2xlarge"  # m7g.2xlarge -> 8 vCPUS 32 GB RAM
+MARKET_OPTIONS="MarketType=spot,SpotOptions={MaxPrice=0.25,SpotInstanceType=one-time}"
 REGION="us-east-2"
 EC2_USER="ec2-user"
-USER_DATA_FILE="${SCRIPTS_DIR}/self_terminate.sh"
+USER_DATA_FILE="${SCRIPTS_DIR}/initialize.sh"
 METADATA_ADDRESS="http://169.254.169.254/latest/meta-data"
 MAC_ADDRESS=$(curl -s "${METADATA_ADDRESS}/network/interfaces/macs/" | head -n1 | tr -d '/')
 CIDR=$(curl -s "${METADATA_ADDRESS}/network/interfaces/macs/${MAC_ADDRESS}/vpc-ipv4-cidr-block/")
@@ -41,6 +38,7 @@ function start_arm_instance() {
         --image-id "${ARM_AMI}" \
         --count 1 \
         --instance-type "${INSTANCE_TYPE}" \
+        --block-device-mappings 'DeviceName=/dev/xvda,Ebs={VolumeSize=16}' \
         --user-data "file://${USER_DATA_FILE}" \
         --instance-market-options "${MARKET_OPTIONS}" \
         --instance-initiated-shutdown-behavior terminate \
@@ -48,6 +46,10 @@ function start_arm_instance() {
         > "${INSTANCE_INFO}"
 
     INSTANCE_ID=$(jq < "${INSTANCE_INFO}" ".Instances[0].InstanceId" -r)
+    if [[ ${INSTANCE_ID} == "" ]]; then
+        echo "ERROR!!!! Failed to start ARM instance. Likely because it could not be allocated on spot market."
+        exit 1
+    fi
     AVAILABILITY_ZONE=$(jq < "${INSTANCE_INFO}" ".Instances[0].Placement.AvailabilityZone" -r)
     aws ec2 wait instance-status-ok --instance-ids "${INSTANCE_ID}"
     INSTANCE_PRIVATE_DNS_NAME=$(aws ec2 describe-instances \

@@ -15,20 +15,23 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
 
 import re
+import time
 from collections import namedtuple
-from time import sleep
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Union
+from typing import TYPE_CHECKING, Any, Sequence
 
 from azure.mgmt.containerinstance.models import (
     Container,
     ContainerGroup,
+    ContainerGroupSubnetId,
     ContainerPort,
     EnvironmentVariable,
     IpAddress,
     ResourceRequests,
     ResourceRequirements,
+    Volume as _AzureVolume,
     VolumeMount,
 )
 from msrestazure.azure_exceptions import CloudError
@@ -42,14 +45,12 @@ from airflow.providers.microsoft.azure.hooks.container_volume import AzureContai
 if TYPE_CHECKING:
     from airflow.utils.context import Context
 
-
 Volume = namedtuple(
-    'Volume',
-    ['conn_id', 'account_name', 'share_name', 'mount_path', 'read_only'],
+    "Volume",
+    ["conn_id", "account_name", "share_name", "mount_path", "read_only"],
 )
 
-
-DEFAULT_ENVIRONMENT_VARIABLES: Dict[str, str] = {}
+DEFAULT_ENVIRONMENT_VARIABLES: dict[str, str] = {}
 DEFAULT_SECURED_VARIABLES: Sequence[str] = []
 DEFAULT_VOLUMES: Sequence[Volume] = []
 DEFAULT_MEMORY_IN_GB = 2.0
@@ -58,7 +59,7 @@ DEFAULT_CPU = 1.0
 
 class AzureContainerInstancesOperator(BaseOperator):
     """
-    Start a container on Azure Container Instances
+    Start a container on Azure Container Instances.
 
     :param ci_conn_id: connection id of a service principal which will be used
         to start the container instance
@@ -88,67 +89,69 @@ class AzureContainerInstancesOperator(BaseOperator):
     :param restart_policy: Restart policy for all containers within the container group.
         Possible values include: 'Always', 'OnFailure', 'Never'
     :param ip_address: The IP address type of the container group.
+    :param subnet_ids: The subnet resource IDs for a container group
 
     **Example**::
 
-                AzureContainerInstancesOperator(
-                    ci_conn_id = "azure_service_principal",
-                    registry_conn_id = "azure_registry_user",
-                    resource_group = "my-resource-group",
-                    name = "my-container-name-{{ ds }}",
-                    image = "myprivateregistry.azurecr.io/my_container:latest",
-                    region = "westeurope",
-                    environment_variables = {"MODEL_PATH":  "my_value",
-                     "POSTGRES_LOGIN": "{{ macros.connection('postgres_default').login }}",
-                     "POSTGRES_PASSWORD": "{{ macros.connection('postgres_default').password }}",
-                     "JOB_GUID": "{{ ti.xcom_pull(task_ids='task1', key='guid') }}" },
-                    secured_variables = ['POSTGRES_PASSWORD'],
-                    volumes = [("azure_container_instance_conn_id",
-                            "my_storage_container",
-                            "my_fileshare",
-                            "/input-data",
-                        True),],
-                    memory_in_gb=14.0,
-                    cpu=4.0,
-                    gpu=GpuResource(count=1, sku='K80'),
-                    command=["/bin/echo", "world"],
-                    task_id="start_container"
-                )
+        AzureContainerInstancesOperator(
+            ci_conn_id="azure_service_principal",
+            registry_conn_id="azure_registry_user",
+            resource_group="my-resource-group",
+            name="my-container-name-{{ ds }}",
+            image="myprivateregistry.azurecr.io/my_container:latest",
+            region="westeurope",
+            environment_variables={
+                "MODEL_PATH": "my_value",
+                "POSTGRES_LOGIN": "{{ macros.connection('postgres_default').login }}",
+                "POSTGRES_PASSWORD": "{{ macros.connection('postgres_default').password }}",
+                "JOB_GUID": "{{ ti.xcom_pull(task_ids='task1', key='guid') }}",
+            },
+            secured_variables=["POSTGRES_PASSWORD"],
+            volumes=[
+                ("azure_container_instance_conn_id", "my_storage_container", "my_fileshare", "/input-data", True),
+            ],
+            memory_in_gb=14.0,
+            cpu=4.0,
+            gpu=GpuResource(count=1, sku="K80"),
+            command=["/bin/echo", "world"],
+            task_id="start_container",
+        )
     """
 
-    template_fields: Sequence[str] = ('name', 'image', 'command', 'environment_variables')
+    template_fields: Sequence[str] = ("name", "image", "command", "environment_variables", "volumes")
     template_fields_renderers = {"command": "bash", "environment_variables": "json"}
 
     def __init__(
         self,
         *,
         ci_conn_id: str,
-        registry_conn_id: Optional[str],
         resource_group: str,
         name: str,
         image: str,
         region: str,
-        environment_variables: Optional[dict] = None,
-        secured_variables: Optional[str] = None,
-        volumes: Optional[list] = None,
-        memory_in_gb: Optional[Any] = None,
-        cpu: Optional[Any] = None,
-        gpu: Optional[Any] = None,
-        command: Optional[List[str]] = None,
+        registry_conn_id: str | None = None,
+        environment_variables: dict | None = None,
+        secured_variables: str | None = None,
+        volumes: list | None = None,
+        memory_in_gb: Any | None = None,
+        cpu: Any | None = None,
+        gpu: Any | None = None,
+        command: list[str] | None = None,
         remove_on_error: bool = True,
         fail_if_exists: bool = True,
-        tags: Optional[Dict[str, str]] = None,
-        os_type: str = 'Linux',
-        restart_policy: str = 'Never',
-        ip_address: Optional[IpAddress] = None,
-        ports: Optional[List[ContainerPort]] = None,
+        tags: dict[str, str] | None = None,
+        os_type: str = "Linux",
+        restart_policy: str = "Never",
+        ip_address: IpAddress | None = None,
+        ports: list[ContainerPort] | None = None,
+        subnet_ids: list[ContainerGroupSubnetId] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
 
         self.ci_conn_id = ci_conn_id
         self.resource_group = resource_group
-        self.name = self._check_name(name)
+        self.name = name
         self.image = image
         self.region = region
         self.registry_conn_id = registry_conn_id
@@ -164,14 +167,14 @@ class AzureContainerInstancesOperator(BaseOperator):
         self._ci_hook: Any = None
         self.tags = tags
         self.os_type = os_type
-        if self.os_type not in ['Linux', 'Windows']:
+        if self.os_type not in ["Linux", "Windows"]:
             raise AirflowException(
                 "Invalid value for the os_type argument. "
                 "Please set 'Linux' or 'Windows' as the os_type. "
                 f"Found `{self.os_type}`."
             )
         self.restart_policy = restart_policy
-        if self.restart_policy not in ['Always', 'OnFailure', 'Never']:
+        if self.restart_policy not in ["Always", "OnFailure", "Never"]:
             raise AirflowException(
                 "Invalid value for the restart_policy argument. "
                 "Please set one of 'Always', 'OnFailure','Never' as the restart_policy. "
@@ -179,12 +182,13 @@ class AzureContainerInstancesOperator(BaseOperator):
             )
         self.ip_address = ip_address
         self.ports = ports
+        self.subnet_ids = subnet_ids
 
-    def execute(self, context: "Context") -> int:
+    def execute(self, context: Context) -> int:
         # Check name again in case it was templated.
         self._check_name(self.name)
 
-        self._ci_hook = AzureContainerInstanceHook(conn_id=self.ci_conn_id)
+        self._ci_hook = AzureContainerInstanceHook(azure_conn_id=self.ci_conn_id)
 
         if self.fail_if_exists:
             self.log.info("Testing if container group already exists")
@@ -193,7 +197,7 @@ class AzureContainerInstancesOperator(BaseOperator):
 
         if self.registry_conn_id:
             registry_hook = AzureContainerRegistryHook(self.registry_conn_id)
-            image_registry_credentials: Optional[list] = [
+            image_registry_credentials: list | None = [
                 registry_hook.connection,
             ]
         else:
@@ -207,8 +211,8 @@ class AzureContainerInstancesOperator(BaseOperator):
                 e = EnvironmentVariable(name=key, value=value)
             environment_variables.append(e)
 
-        volumes: List[Union[Volume, Volume]] = []
-        volume_mounts: List[Union[VolumeMount, VolumeMount]] = []
+        volumes: list[_AzureVolume] = []
+        volume_mounts: list[VolumeMount | VolumeMount] = []
         for conn_id, account_name, share_name, mount_path, read_only in self.volumes:
             hook = AzureContainerVolumeHook(conn_id)
 
@@ -251,6 +255,7 @@ class AzureContainerInstancesOperator(BaseOperator):
                 os_type=self.os_type,
                 tags=self.tags,
                 ip_address=self.ip_address,
+                subnet_ids=self.subnet_ids,
             )
 
             self._ci_hook.create_or_update(self.resource_group, self.name, container_group)
@@ -273,12 +278,11 @@ class AzureContainerInstancesOperator(BaseOperator):
                 self.on_kill()
 
     def on_kill(self) -> None:
-        if self.remove_on_error:
-            self.log.info("Deleting container group")
-            try:
-                self._ci_hook.delete(self.resource_group, self.name)
-            except Exception:
-                self.log.exception("Could not delete container group")
+        self.log.info("Deleting container group")
+        try:
+            self._ci_hook.delete(self.resource_group, self.name)
+        except Exception:
+            self.log.exception("Could not delete container group")
 
     def _monitor_logging(self, resource_group: str, name: str) -> int:
         last_state = None
@@ -289,7 +293,6 @@ class AzureContainerInstancesOperator(BaseOperator):
             try:
                 cg_state = self._ci_hook.get_state(resource_group, name)
                 instance_view = cg_state.containers[0].instance_view
-
                 # If there is no instance view, we show the provisioning state
                 if instance_view is not None:
                     c_state = instance_view.current_state
@@ -314,6 +317,9 @@ class AzureContainerInstancesOperator(BaseOperator):
                 if state in ["Running", "Terminated", "Succeeded"]:
                     try:
                         logs = self._ci_hook.get_logs(resource_group, name)
+                        if logs and logs[0] is None:
+                            self.log.error("Container log is broken, marking as failed.")
+                            return 1
                         last_line_logged = self._log_last(logs, last_line_logged)
                     except CloudError:
                         self.log.exception(
@@ -331,7 +337,7 @@ class AzureContainerInstancesOperator(BaseOperator):
             except AirflowTaskTimeout:
                 raise
             except CloudError as err:
-                if 'ResourceNotFound' in str(err):
+                if "ResourceNotFound" in str(err):
                     self.log.warning(
                         "ResourceNotFound, container is probably removed "
                         "by another process "
@@ -343,9 +349,9 @@ class AzureContainerInstancesOperator(BaseOperator):
             except Exception:
                 self.log.exception("Exception while getting container groups")
 
-            sleep(1)
+            time.sleep(1)
 
-    def _log_last(self, logs: Optional[list], last_line_logged: Any) -> Optional[Any]:
+    def _log_last(self, logs: list | None, last_line_logged: Any) -> Any | None:
         if logs:
             # determine the last line which was logged before
             last_line_index = 0
@@ -364,12 +370,9 @@ class AzureContainerInstancesOperator(BaseOperator):
 
     @staticmethod
     def _check_name(name: str) -> str:
-        if '{{' in name:
-            # Let macros pass as they cannot be checked at construction time
-            return name
         regex_check = re.match("[a-z0-9]([-a-z0-9]*[a-z0-9])?", name)
         if regex_check is None or regex_check.group() != name:
             raise AirflowException('ACI name must match regex [a-z0-9]([-a-z0-9]*[a-z0-9])? (like "my-name")')
         if len(name) > 63:
-            raise AirflowException('ACI name cannot be longer than 63 characters')
+            raise AirflowException("ACI name cannot be longer than 63 characters")
         return name

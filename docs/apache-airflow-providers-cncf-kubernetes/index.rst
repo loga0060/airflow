@@ -19,10 +19,18 @@
 ``apache-airflow-providers-cncf-kubernetes``
 ============================================
 
-Content
--------
 
 .. toctree::
+    :hidden:
+    :maxdepth: 1
+    :caption: Basics
+
+    Home <self>
+    Changelog <changelog>
+    Security <security>
+
+.. toctree::
+    :hidden:
     :maxdepth: 1
     :caption: Guides
 
@@ -30,22 +38,27 @@ Content
     Operators <operators>
 
 .. toctree::
+    :hidden:
     :maxdepth: 1
     :caption: References
 
+    Configuration <configurations-ref>
+    CLI <cli-ref>
     Python API <_api/airflow/providers/cncf/kubernetes/index>
 
 .. toctree::
     :hidden:
+    :maxdepth: 1
     :caption: System tests
 
     System Tests <_api/tests/system/providers/cncf/kubernetes/index>
 
 .. toctree::
+    :hidden:
     :maxdepth: 1
     :caption: Resources
 
-    Example DAGs <https://github.com/apache/airflow/tree/providers-cncf-kubernetes/4.1.0/tests/system/providers/cncf/kubernetes>
+    Example DAGs <https://github.com/apache/airflow/tree/providers-cncf-kubernetes/|version|/tests/system/providers/cncf/kubernetes>
     PyPI Repository <https://pypi.org/project/apache-airflow-providers-cncf-kubernetes/>
     Installing from sources <installing-providers-from-sources>
 
@@ -53,42 +66,47 @@ Content
 
 
 .. toctree::
+    :hidden:
     :maxdepth: 1
     :caption: Commits
 
     Detailed list of commits <commits>
 
 
-Package apache-airflow-providers-cncf-kubernetes
+apache-airflow-providers-cncf-kubernetes package
 ------------------------------------------------------
 
 `Kubernetes <https://kubernetes.io/>`__
 
 
-Release: 4.1.0
+Release: 8.0.0
 
 Provider package
 ----------------
 
-This is a provider package for ``cncf.kubernetes`` provider. All classes for this provider package
-are in ``airflow.providers.cncf.kubernetes`` python package.
+This package is for the ``cncf.kubernetes`` provider.
+All classes for this package are included in the ``airflow.providers.cncf.kubernetes`` python package.
 
 Installation
 ------------
 
-You can install this package on top of an existing Airflow 2 installation (see ``Requirements`` below)
-for the minimum Airflow version supported) via
-``pip install apache-airflow-providers-cncf-kubernetes``
+You can install this package on top of an existing Airflow 2 installation via
+``pip install apache-airflow-providers-cncf-kubernetes``.
+For the minimum Airflow version supported, see ``Requirements`` below.
 
 Requirements
 ------------
 
-==================  ==================
-PIP package         Version required
-==================  ==================
-``apache-airflow``  ``>=2.3.0``
-``cryptography``    ``>=2.0.0``
-``kubernetes``      ``>=21.7.0,<24``
-==================  ==================
+The minimum Apache Airflow version supported by this provider package is ``2.6.0``.
 
-.. include:: ../../airflow/providers/cncf/kubernetes/CHANGELOG.rst
+======================  =====================
+PIP package             Version required
+======================  =====================
+``aiofiles``            ``>=23.2.0``
+``apache-airflow``      ``>=2.6.0``
+``asgiref``             ``>=3.5.2``
+``cryptography``        ``>=2.0.0``
+``kubernetes``          ``>=28.1.0,<=29.0.0``
+``kubernetes_asyncio``  ``>=28.1.0,<=29.0.0``
+``google-re2``          ``>=1.0``
+======================  =====================

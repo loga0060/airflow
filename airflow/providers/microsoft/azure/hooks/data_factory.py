@@ -14,9 +14,9 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""
-.. spelling::
+"""Spelling exceptions.
 
+.. spelling:word-list::
     CreateRunResponse
     DatasetResource
     LinkedServiceResource
@@ -25,31 +25,52 @@
     PipelineRun
     TriggerResource
     datafactory
+    DataFlow
+    DataFlowResource
     mgmt
 """
+from __future__ import annotations
+
 import inspect
 import time
+import warnings
 from functools import wraps
-from typing import Any, Callable, Dict, Optional, Set, Tuple, Union
+from typing import IO, TYPE_CHECKING, Any, Callable, TypeVar, Union, cast
 
-from azure.core.polling import LROPoller
+from asgiref.sync import sync_to_async
 from azure.identity import ClientSecretCredential, DefaultAzureCredential
+from azure.identity.aio import (
+    ClientSecretCredential as AsyncClientSecretCredential,
+    DefaultAzureCredential as AsyncDefaultAzureCredential,
+)
 from azure.mgmt.datafactory import DataFactoryManagementClient
-from azure.mgmt.datafactory.models import (
-    CreateRunResponse,
-    DatasetResource,
-    Factory,
-    LinkedServiceResource,
-    PipelineResource,
-    PipelineRun,
-    TriggerResource,
+from azure.mgmt.datafactory.aio import DataFactoryManagementClient as AsyncDataFactoryManagementClient
+
+from airflow.exceptions import AirflowException, AirflowProviderDeprecationWarning
+from airflow.hooks.base import BaseHook
+from airflow.providers.microsoft.azure.utils import (
+    add_managed_identity_connection_widgets,
+    get_async_default_azure_credential,
+    get_sync_default_azure_credential,
 )
 
-from airflow.exceptions import AirflowException
-from airflow.hooks.base import BaseHook
-from airflow.typing_compat import TypedDict
+if TYPE_CHECKING:
+    from azure.core.polling import LROPoller
+    from azure.mgmt.datafactory.models import (
+        CreateRunResponse,
+        DataFlowResource,
+        DatasetResource,
+        Factory,
+        LinkedServiceResource,
+        PipelineResource,
+        PipelineRun,
+        TriggerResource,
+    )
 
 Credentials = Union[ClientSecretCredential, DefaultAzureCredential]
+AsyncCredentials = Union[AsyncClientSecretCredential, AsyncDefaultAzureCredential]
+
+T = TypeVar("T", bound=Any)
 
 
 def provide_targeted_factory(func: Callable) -> Callable:
@@ -70,26 +91,21 @@ def provide_targeted_factory(func: Callable) -> Callable:
             if arg not in bound_args.arguments or bound_args.arguments[arg] is None:
                 self = args[0]
                 conn = self.get_connection(self.conn_id)
-                default_value = conn.extra_dejson.get(default_key)
+                extras = conn.extra_dejson
+                default_value = extras.get(default_key) or extras.get(
+                    f"extra__azure_data_factory__{default_key}"
+                )
                 if not default_value:
                     raise AirflowException("Could not determine the targeted data factory.")
 
-                bound_args.arguments[arg] = conn.extra_dejson[default_key]
+                bound_args.arguments[arg] = default_value
 
-        bind_argument("resource_group_name", "extra__azure_data_factory__resource_group_name")
-        bind_argument("factory_name", "extra__azure_data_factory__factory_name")
+        bind_argument("resource_group_name", "resource_group_name")
+        bind_argument("factory_name", "factory_name")
 
         return func(*bound_args.args, **bound_args.kwargs)
 
     return wrapper
-
-
-class PipelineRunInfo(TypedDict):
-    """Type class for the pipeline run info dictionary."""
-
-    run_id: str
-    factory_name: Optional[str]
-    resource_group_name: Optional[str]
 
 
 class AzureDataFactoryPipelineRunStatus:
@@ -103,10 +119,29 @@ class AzureDataFactoryPipelineRunStatus:
     CANCELLED = "Cancelled"
 
     TERMINAL_STATUSES = {CANCELLED, FAILED, SUCCEEDED}
+    INTERMEDIATE_STATES = {QUEUED, IN_PROGRESS, CANCELING}
+    FAILURE_STATES = {FAILED, CANCELLED}
 
 
 class AzureDataFactoryPipelineRunException(AirflowException):
     """An exception that indicates a pipeline run failed to complete."""
+
+
+def get_field(extras: dict, field_name: str, strict: bool = False):
+    """Get field from extra, first checking short name, then for backcompat we check for prefixed name."""
+    backcompat_prefix = "extra__azure_data_factory__"
+    if field_name.startswith("extra__"):
+        raise ValueError(
+            f"Got prefixed name {field_name}; please remove the '{backcompat_prefix}' prefix "
+            "when using this method."
+        )
+    if field_name in extras:
+        return extras[field_name] or None
+    prefixed_name = f"{backcompat_prefix}{field_name}"
+    if prefixed_name in extras:
+        return extras[prefixed_name] or None
+    if strict:
+        raise KeyError(f"Field {field_name} not found in extras")
 
 
 class AzureDataFactoryHook(BaseHook):
@@ -116,46 +151,41 @@ class AzureDataFactoryHook(BaseHook):
     :param azure_data_factory_conn_id: The :ref:`Azure Data Factory connection id<howto/connection:adf>`.
     """
 
-    conn_type: str = 'azure_data_factory'
-    conn_name_attr: str = 'azure_data_factory_conn_id'
-    default_conn_name: str = 'azure_data_factory_default'
-    hook_name: str = 'Azure Data Factory'
+    conn_type: str = "azure_data_factory"
+    conn_name_attr: str = "azure_data_factory_conn_id"
+    default_conn_name: str = "azure_data_factory_default"
+    hook_name: str = "Azure Data Factory"
 
-    @staticmethod
-    def get_connection_form_widgets() -> Dict[str, Any]:
-        """Returns connection widgets to add to connection form"""
+    @classmethod
+    @add_managed_identity_connection_widgets
+    def get_connection_form_widgets(cls) -> dict[str, Any]:
+        """Return connection widgets to add to connection form."""
         from flask_appbuilder.fieldwidgets import BS3TextFieldWidget
         from flask_babel import lazy_gettext
         from wtforms import StringField
 
         return {
-            "extra__azure_data_factory__tenantId": StringField(
-                lazy_gettext('Tenant ID'), widget=BS3TextFieldWidget()
+            "tenantId": StringField(lazy_gettext("Tenant ID"), widget=BS3TextFieldWidget()),
+            "subscriptionId": StringField(lazy_gettext("Subscription ID"), widget=BS3TextFieldWidget()),
+            "resource_group_name": StringField(
+                lazy_gettext("Resource Group Name"), widget=BS3TextFieldWidget()
             ),
-            "extra__azure_data_factory__subscriptionId": StringField(
-                lazy_gettext('Subscription ID'), widget=BS3TextFieldWidget()
-            ),
-            "extra__azure_data_factory__resource_group_name": StringField(
-                lazy_gettext('Resource Group Name'), widget=BS3TextFieldWidget()
-            ),
-            "extra__azure_data_factory__factory_name": StringField(
-                lazy_gettext('Factory Name'), widget=BS3TextFieldWidget()
-            ),
+            "factory_name": StringField(lazy_gettext("Factory Name"), widget=BS3TextFieldWidget()),
         }
 
-    @staticmethod
-    def get_ui_field_behaviour() -> Dict[str, Any]:
-        """Returns custom field behaviour"""
+    @classmethod
+    def get_ui_field_behaviour(cls) -> dict[str, Any]:
+        """Return custom field behaviour."""
         return {
-            "hidden_fields": ['schema', 'port', 'host', 'extra'],
+            "hidden_fields": ["schema", "port", "host", "extra"],
             "relabeling": {
-                'login': 'Client ID',
-                'password': 'Secret',
+                "login": "Client ID",
+                "password": "Secret",
             },
         }
 
     def __init__(self, azure_data_factory_conn_id: str = default_conn_name):
-        self._conn: DataFactoryManagementClient = None
+        self._conn: DataFactoryManagementClient | None = None
         self.conn_id = azure_data_factory_conn_id
         super().__init__()
 
@@ -164,10 +194,11 @@ class AzureDataFactoryHook(BaseHook):
             return self._conn
 
         conn = self.get_connection(self.conn_id)
-        tenant = conn.extra_dejson.get('extra__azure_data_factory__tenantId')
+        extras = conn.extra_dejson
+        tenant = get_field(extras, "tenantId")
 
         try:
-            subscription_id = conn.extra_dejson['extra__azure_data_factory__subscriptionId']
+            subscription_id = get_field(extras, "subscriptionId", strict=True)
         except KeyError:
             raise ValueError("A Subscription ID is required to connect to Azure Data Factory.")
 
@@ -180,15 +211,22 @@ class AzureDataFactoryHook(BaseHook):
                 client_id=conn.login, client_secret=conn.password, tenant_id=tenant
             )
         else:
-            credential = DefaultAzureCredential()
+            managed_identity_client_id = get_field(extras, "managed_identity_client_id")
+            workload_identity_tenant_id = get_field(extras, "workload_identity_tenant_id")
+            credential = get_sync_default_azure_credential(
+                managed_identity_client_id=managed_identity_client_id,
+                workload_identity_tenant_id=workload_identity_tenant_id,
+            )
         self._conn = self._create_client(credential, subscription_id)
 
         return self._conn
 
+    def refresh_conn(self) -> DataFactoryManagementClient:
+        self._conn = None
+        return self.get_conn()
+
     @provide_targeted_factory
-    def get_factory(
-        self, resource_group_name: Optional[str] = None, factory_name: Optional[str] = None, **config: Any
-    ) -> Factory:
+    def get_factory(self, resource_group_name: str, factory_name: str, **config: Any) -> Factory | None:
         """
         Get the factory.
 
@@ -218,8 +256,9 @@ class AzureDataFactoryHook(BaseHook):
     def update_factory(
         self,
         factory: Factory,
-        resource_group_name: Optional[str] = None,
-        factory_name: Optional[str] = None,
+        resource_group_name: str,
+        factory_name: str,
+        if_match: str | None = None,
         **config: Any,
     ) -> Factory:
         """
@@ -228,6 +267,8 @@ class AzureDataFactoryHook(BaseHook):
         :param factory: The factory resource definition.
         :param resource_group_name: The resource group name.
         :param factory_name: The factory name.
+        :param if_match: ETag of the factory entity. Should only be specified for update, for which it
+         should match existing entity or can be * for unconditional update. Default value is None.
         :param config: Extra parameters for the ADF client.
         :raise AirflowException: If the factory does not exist.
         :return: The factory.
@@ -236,15 +277,15 @@ class AzureDataFactoryHook(BaseHook):
             raise AirflowException(f"Factory {factory!r} does not exist.")
 
         return self.get_conn().factories.create_or_update(
-            resource_group_name, factory_name, factory, **config
+            resource_group_name, factory_name, factory, if_match, **config
         )
 
     @provide_targeted_factory
     def create_factory(
         self,
         factory: Factory,
-        resource_group_name: Optional[str] = None,
-        factory_name: Optional[str] = None,
+        resource_group_name: str,
+        factory_name: str,
         **config: Any,
     ) -> Factory:
         """
@@ -265,9 +306,7 @@ class AzureDataFactoryHook(BaseHook):
         )
 
     @provide_targeted_factory
-    def delete_factory(
-        self, resource_group_name: Optional[str] = None, factory_name: Optional[str] = None, **config: Any
-    ) -> None:
+    def delete_factory(self, resource_group_name: str, factory_name: str, **config: Any) -> None:
         """
         Delete the factory.
 
@@ -281,21 +320,25 @@ class AzureDataFactoryHook(BaseHook):
     def get_linked_service(
         self,
         linked_service_name: str,
-        resource_group_name: Optional[str] = None,
-        factory_name: Optional[str] = None,
+        resource_group_name: str,
+        factory_name: str,
+        if_none_match: str | None = None,
         **config: Any,
-    ) -> LinkedServiceResource:
+    ) -> LinkedServiceResource | None:
         """
         Get the linked service.
 
         :param linked_service_name: The linked service name.
         :param resource_group_name: The resource group name.
         :param factory_name: The factory name.
+        :param if_none_match: ETag of the linked service entity. Should only be specified for get. If
+         the ETag matches the existing entity tag, or if * was provided, then no content will be
+         returned. Default value is None.
         :param config: Extra parameters for the ADF client.
         :return: The linked service.
         """
         return self.get_conn().linked_services.get(
-            resource_group_name, factory_name, linked_service_name, **config
+            resource_group_name, factory_name, linked_service_name, if_none_match, **config
         )
 
     def _linked_service_exists(self, resource_group_name, factory_name, linked_service_name) -> bool:
@@ -314,8 +357,8 @@ class AzureDataFactoryHook(BaseHook):
         self,
         linked_service_name: str,
         linked_service: LinkedServiceResource,
-        resource_group_name: Optional[str] = None,
-        factory_name: Optional[str] = None,
+        resource_group_name: str,
+        factory_name: str,
         **config: Any,
     ) -> LinkedServiceResource:
         """
@@ -341,8 +384,8 @@ class AzureDataFactoryHook(BaseHook):
         self,
         linked_service_name: str,
         linked_service: LinkedServiceResource,
-        resource_group_name: Optional[str] = None,
-        factory_name: Optional[str] = None,
+        resource_group_name: str,
+        factory_name: str,
         **config: Any,
     ) -> LinkedServiceResource:
         """
@@ -367,8 +410,8 @@ class AzureDataFactoryHook(BaseHook):
     def delete_linked_service(
         self,
         linked_service_name: str,
-        resource_group_name: Optional[str] = None,
-        factory_name: Optional[str] = None,
+        resource_group_name: str,
+        factory_name: str,
         **config: Any,
     ) -> None:
         """
@@ -387,10 +430,10 @@ class AzureDataFactoryHook(BaseHook):
     def get_dataset(
         self,
         dataset_name: str,
-        resource_group_name: Optional[str] = None,
-        factory_name: Optional[str] = None,
+        resource_group_name: str,
+        factory_name: str,
         **config: Any,
-    ) -> DatasetResource:
+    ) -> DatasetResource | None:
         """
         Get the dataset.
 
@@ -416,8 +459,8 @@ class AzureDataFactoryHook(BaseHook):
         self,
         dataset_name: str,
         dataset: DatasetResource,
-        resource_group_name: Optional[str] = None,
-        factory_name: Optional[str] = None,
+        resource_group_name: str,
+        factory_name: str,
         **config: Any,
     ) -> DatasetResource:
         """
@@ -443,8 +486,8 @@ class AzureDataFactoryHook(BaseHook):
         self,
         dataset_name: str,
         dataset: DatasetResource,
-        resource_group_name: Optional[str] = None,
-        factory_name: Optional[str] = None,
+        resource_group_name: str,
+        factory_name: str,
         **config: Any,
     ) -> DatasetResource:
         """
@@ -469,28 +512,149 @@ class AzureDataFactoryHook(BaseHook):
     def delete_dataset(
         self,
         dataset_name: str,
-        resource_group_name: Optional[str] = None,
-        factory_name: Optional[str] = None,
+        resource_group_name: str,
+        factory_name: str,
         **config: Any,
     ) -> None:
         """
         Delete the dataset.
 
         :param dataset_name: The dataset name.
-        :param resource_group_name: The dataset name.
+        :param resource_group_name: The resource group name.
         :param factory_name: The factory name.
         :param config: Extra parameters for the ADF client.
         """
         self.get_conn().datasets.delete(resource_group_name, factory_name, dataset_name, **config)
 
     @provide_targeted_factory
+    def get_dataflow(
+        self,
+        dataflow_name: str,
+        resource_group_name: str,
+        factory_name: str,
+        if_none_match: str | None = None,
+        **config: Any,
+    ) -> DataFlowResource:
+        """
+        Get the dataflow.
+
+        :param dataflow_name: The dataflow name.
+        :param resource_group_name: The resource group name.
+        :param factory_name: The factory name.
+        :param if_none_match: ETag of the data flow entity. Should only be specified for get. If the
+         ETag matches the existing entity tag, or if * was provided, then no content will be returned.
+         Default value is None.
+        :param config: Extra parameters for the ADF client.
+        :return: The DataFlowResource.
+        """
+        return self.get_conn().data_flows.get(
+            resource_group_name, factory_name, dataflow_name, if_none_match, **config
+        )
+
+    def _dataflow_exists(
+        self,
+        dataflow_name: str,
+        resource_group_name: str,
+        factory_name: str,
+    ) -> bool:
+        """Return whether the dataflow already exists."""
+        dataflows = {
+            dataflow.name
+            for dataflow in self.get_conn().data_flows.list_by_factory(resource_group_name, factory_name)
+        }
+
+        return dataflow_name in dataflows
+
+    @provide_targeted_factory
+    def update_dataflow(
+        self,
+        dataflow_name: str,
+        dataflow: DataFlowResource | IO,
+        resource_group_name: str,
+        factory_name: str,
+        if_match: str | None = None,
+        **config: Any,
+    ) -> DataFlowResource:
+        """
+        Update the dataflow.
+
+        :param dataflow_name: The dataflow name.
+        :param dataflow: The dataflow resource definition.
+        :param resource_group_name: The resource group name.
+        :param factory_name: The factory name.
+        :param if_match: ETag of the data flow entity. Should only be specified for update, for which
+         it should match existing entity or can be * for unconditional update. Default value is None.
+        :param config: Extra parameters for the ADF client.
+        :raise AirflowException: If the dataset does not exist.
+        :return: DataFlowResource.
+        """
+        if not self._dataflow_exists(
+            dataflow_name,
+            resource_group_name,
+            factory_name,
+        ):
+            raise AirflowException(f"Dataflow {dataflow_name!r} does not exist.")
+
+        return self.get_conn().data_flows.create_or_update(
+            resource_group_name, factory_name, dataflow_name, dataflow, if_match, **config
+        )
+
+    @provide_targeted_factory
+    def create_dataflow(
+        self,
+        dataflow_name: str,
+        dataflow: DataFlowResource,
+        resource_group_name: str,
+        factory_name: str,
+        if_match: str | None = None,
+        **config: Any,
+    ) -> DataFlowResource:
+        """
+        Create the dataflow.
+
+        :param dataflow_name: The dataflow name.
+        :param dataflow: The dataflow resource definition.
+        :param resource_group_name: The resource group name.
+        :param factory_name: The factory name.
+        :param if_match: ETag of the factory entity. Should only be specified for update, for which it
+         should match existing entity or can be * for unconditional update. Default value is None.
+        :param config: Extra parameters for the ADF client.
+        :raise AirflowException: If the dataset already exists.
+        :return: The dataset.
+        """
+        if self._dataflow_exists(dataflow_name, resource_group_name, factory_name):
+            raise AirflowException(f"Dataflow {dataflow_name!r} already exists.")
+
+        return self.get_conn().data_flows.create_or_update(
+            resource_group_name, factory_name, dataflow_name, dataflow, if_match, **config
+        )
+
+    @provide_targeted_factory
+    def delete_dataflow(
+        self,
+        dataflow_name: str,
+        resource_group_name: str,
+        factory_name: str,
+        **config: Any,
+    ) -> None:
+        """
+        Delete the dataflow.
+
+        :param dataflow_name: The dataflow name.
+        :param resource_group_name: The resource group name.
+        :param factory_name: The factory name.
+        :param config: Extra parameters for the ADF client.
+        """
+        self.get_conn().data_flows.delete(resource_group_name, factory_name, dataflow_name, **config)
+
+    @provide_targeted_factory
     def get_pipeline(
         self,
         pipeline_name: str,
-        resource_group_name: Optional[str] = None,
-        factory_name: Optional[str] = None,
+        resource_group_name: str,
+        factory_name: str,
         **config: Any,
-    ) -> PipelineResource:
+    ) -> PipelineResource | None:
         """
         Get the pipeline.
 
@@ -516,8 +680,8 @@ class AzureDataFactoryHook(BaseHook):
         self,
         pipeline_name: str,
         pipeline: PipelineResource,
-        resource_group_name: Optional[str] = None,
-        factory_name: Optional[str] = None,
+        resource_group_name: str,
+        factory_name: str,
         **config: Any,
     ) -> PipelineResource:
         """
@@ -543,8 +707,8 @@ class AzureDataFactoryHook(BaseHook):
         self,
         pipeline_name: str,
         pipeline: PipelineResource,
-        resource_group_name: Optional[str] = None,
-        factory_name: Optional[str] = None,
+        resource_group_name: str,
+        factory_name: str,
         **config: Any,
     ) -> PipelineResource:
         """
@@ -569,8 +733,8 @@ class AzureDataFactoryHook(BaseHook):
     def delete_pipeline(
         self,
         pipeline_name: str,
-        resource_group_name: Optional[str] = None,
-        factory_name: Optional[str] = None,
+        resource_group_name: str,
+        factory_name: str,
         **config: Any,
     ) -> None:
         """
@@ -587,8 +751,8 @@ class AzureDataFactoryHook(BaseHook):
     def run_pipeline(
         self,
         pipeline_name: str,
-        resource_group_name: Optional[str] = None,
-        factory_name: Optional[str] = None,
+        resource_group_name: str,
+        factory_name: str,
         **config: Any,
     ) -> CreateRunResponse:
         """
@@ -608,8 +772,8 @@ class AzureDataFactoryHook(BaseHook):
     def get_pipeline_run(
         self,
         run_id: str,
-        resource_group_name: Optional[str] = None,
-        factory_name: Optional[str] = None,
+        resource_group_name: str,
+        factory_name: str,
         **config: Any,
     ) -> PipelineRun:
         """
@@ -626,8 +790,8 @@ class AzureDataFactoryHook(BaseHook):
     def get_pipeline_run_status(
         self,
         run_id: str,
-        resource_group_name: Optional[str] = None,
-        factory_name: Optional[str] = None,
+        resource_group_name: str,
+        factory_name: str,
     ) -> str:
         """
         Get a pipeline run's current status.
@@ -638,11 +802,7 @@ class AzureDataFactoryHook(BaseHook):
         :return: The status of the pipeline run.
         """
         self.log.info("Getting the status of run ID %s.", run_id)
-        pipeline_run_status = self.get_pipeline_run(
-            run_id=run_id,
-            factory_name=factory_name,
-            resource_group_name=resource_group_name,
-        ).status
+        pipeline_run_status = self.get_pipeline_run(run_id, resource_group_name, factory_name).status
         self.log.info("Current status of pipeline run %s: %s", run_id, pipeline_run_status)
 
         return pipeline_run_status
@@ -650,14 +810,14 @@ class AzureDataFactoryHook(BaseHook):
     def wait_for_pipeline_run_status(
         self,
         run_id: str,
-        expected_statuses: Union[str, Set[str]],
-        resource_group_name: Optional[str] = None,
-        factory_name: Optional[str] = None,
+        expected_statuses: str | set[str],
+        resource_group_name: str,
+        factory_name: str,
         check_interval: int = 60,
         timeout: int = 60 * 60 * 24 * 7,
     ) -> bool:
         """
-        Waits for a pipeline run to match an expected status.
+        Wait for a pipeline run to match an expected status.
 
         :param run_id: The pipeline run identifier.
         :param expected_statuses: The desired status(es) to check against a pipeline run's current status.
@@ -668,12 +828,7 @@ class AzureDataFactoryHook(BaseHook):
             status.
         :return: Boolean indicating if the pipeline run has reached the ``expected_status``.
         """
-        pipeline_run_info = PipelineRunInfo(
-            run_id=run_id,
-            factory_name=factory_name,
-            resource_group_name=resource_group_name,
-        )
-        pipeline_run_status = self.get_pipeline_run_status(**pipeline_run_info)
+        pipeline_run_status = self.get_pipeline_run_status(run_id, resource_group_name, factory_name)
 
         start_time = time.monotonic()
 
@@ -690,7 +845,7 @@ class AzureDataFactoryHook(BaseHook):
             # Wait to check the status of the pipeline run based on the ``check_interval`` configured.
             time.sleep(check_interval)
 
-            pipeline_run_status = self.get_pipeline_run_status(**pipeline_run_info)
+            pipeline_run_status = self.get_pipeline_run_status(run_id, resource_group_name, factory_name)
 
         return pipeline_run_status in expected_statuses
 
@@ -698,8 +853,8 @@ class AzureDataFactoryHook(BaseHook):
     def cancel_pipeline_run(
         self,
         run_id: str,
-        resource_group_name: Optional[str] = None,
-        factory_name: Optional[str] = None,
+        resource_group_name: str,
+        factory_name: str,
         **config: Any,
     ) -> None:
         """
@@ -716,10 +871,10 @@ class AzureDataFactoryHook(BaseHook):
     def get_trigger(
         self,
         trigger_name: str,
-        resource_group_name: Optional[str] = None,
-        factory_name: Optional[str] = None,
+        resource_group_name: str,
+        factory_name: str,
         **config: Any,
-    ) -> TriggerResource:
+    ) -> TriggerResource | None:
         """
         Get the trigger.
 
@@ -745,8 +900,9 @@ class AzureDataFactoryHook(BaseHook):
         self,
         trigger_name: str,
         trigger: TriggerResource,
-        resource_group_name: Optional[str] = None,
-        factory_name: Optional[str] = None,
+        resource_group_name: str,
+        factory_name: str,
+        if_match: str | None = None,
         **config: Any,
     ) -> TriggerResource:
         """
@@ -756,6 +912,8 @@ class AzureDataFactoryHook(BaseHook):
         :param trigger: The trigger resource definition.
         :param resource_group_name: The resource group name.
         :param factory_name: The factory name.
+        :param if_match: ETag of the trigger entity.  Should only be specified for update, for which it
+         should match existing entity or can be * for unconditional update. Default value is None.
         :param config: Extra parameters for the ADF client.
         :raise AirflowException: If the trigger does not exist.
         :return: The trigger.
@@ -764,7 +922,7 @@ class AzureDataFactoryHook(BaseHook):
             raise AirflowException(f"Trigger {trigger_name!r} does not exist.")
 
         return self.get_conn().triggers.create_or_update(
-            resource_group_name, factory_name, trigger_name, trigger, **config
+            resource_group_name, factory_name, trigger_name, trigger, if_match, **config
         )
 
     @provide_targeted_factory
@@ -772,8 +930,8 @@ class AzureDataFactoryHook(BaseHook):
         self,
         trigger_name: str,
         trigger: TriggerResource,
-        resource_group_name: Optional[str] = None,
-        factory_name: Optional[str] = None,
+        resource_group_name: str,
+        factory_name: str,
         **config: Any,
     ) -> TriggerResource:
         """
@@ -798,8 +956,8 @@ class AzureDataFactoryHook(BaseHook):
     def delete_trigger(
         self,
         trigger_name: str,
-        resource_group_name: Optional[str] = None,
-        factory_name: Optional[str] = None,
+        resource_group_name: str,
+        factory_name: str,
         **config: Any,
     ) -> None:
         """
@@ -816,8 +974,8 @@ class AzureDataFactoryHook(BaseHook):
     def start_trigger(
         self,
         trigger_name: str,
-        resource_group_name: Optional[str] = None,
-        factory_name: Optional[str] = None,
+        resource_group_name: str,
+        factory_name: str,
         **config: Any,
     ) -> LROPoller:
         """
@@ -835,8 +993,8 @@ class AzureDataFactoryHook(BaseHook):
     def stop_trigger(
         self,
         trigger_name: str,
-        resource_group_name: Optional[str] = None,
-        factory_name: Optional[str] = None,
+        resource_group_name: str,
+        factory_name: str,
         **config: Any,
     ) -> LROPoller:
         """
@@ -855,8 +1013,8 @@ class AzureDataFactoryHook(BaseHook):
         self,
         trigger_name: str,
         run_id: str,
-        resource_group_name: Optional[str] = None,
-        factory_name: Optional[str] = None,
+        resource_group_name: str,
+        factory_name: str,
         **config: Any,
     ) -> None:
         """
@@ -877,8 +1035,8 @@ class AzureDataFactoryHook(BaseHook):
         self,
         trigger_name: str,
         run_id: str,
-        resource_group_name: Optional[str] = None,
-        factory_name: Optional[str] = None,
+        resource_group_name: str,
+        factory_name: str,
         **config: Any,
     ) -> None:
         """
@@ -892,7 +1050,7 @@ class AzureDataFactoryHook(BaseHook):
         """
         self.get_conn().trigger_runs.cancel(resource_group_name, factory_name, trigger_name, run_id, **config)
 
-    def test_connection(self) -> Tuple[bool, str]:
+    def test_connection(self) -> tuple[bool, str]:
         """Test a configured Azure Data Factory connection."""
         success = (True, "Successfully connected to Azure Data Factory.")
 
@@ -902,7 +1060,7 @@ class AzureDataFactoryHook(BaseHook):
             # DataFactoryManagementClient with incorrect values but then will fail properly once items are
             # retrieved using the client. We need to _actually_ try to retrieve an object to properly test the
             # connection.
-            next(self.get_conn().factories.list())
+            self.get_conn().factories.list()
             return success
         except StopIteration:
             # If the iterator returned is empty it should still be considered a successful connection since
@@ -911,3 +1069,158 @@ class AzureDataFactoryHook(BaseHook):
             return success
         except Exception as e:
             return False, str(e)
+
+
+def provide_targeted_factory_async(func: T) -> T:
+    """
+    Provide the targeted factory to the async decorated function in case it isn't specified.
+
+    If ``resource_group_name`` or ``factory_name`` is not provided it defaults to the value specified in
+    the connection extras.
+    """
+    signature = inspect.signature(func)
+
+    @wraps(func)
+    async def wrapper(*args: Any, **kwargs: Any) -> Any:
+        bound_args = signature.bind(*args, **kwargs)
+
+        async def bind_argument(arg: Any, default_key: str) -> None:
+            # Check if arg was not included in the function signature or, if it is, the value is not provided.
+            if arg not in bound_args.arguments or bound_args.arguments[arg] is None:
+                self = args[0]
+                conn = await sync_to_async(self.get_connection)(self.conn_id)
+                extras = conn.extra_dejson
+                default_value = extras.get(default_key) or extras.get(
+                    f"extra__azure_data_factory__{default_key}"
+                )
+                if not default_value and extras.get(f"extra__azure_data_factory__{default_key}"):
+                    warnings.warn(
+                        f"`extra__azure_data_factory__{default_key}` is deprecated in azure connection extra,"
+                        f" please use `{default_key}` instead",
+                        AirflowProviderDeprecationWarning,
+                        stacklevel=2,
+                    )
+                    default_value = extras.get(f"extra__azure_data_factory__{default_key}")
+                if not default_value:
+                    raise AirflowException("Could not determine the targeted data factory.")
+
+                bound_args.arguments[arg] = default_value
+
+        await bind_argument("resource_group_name", "resource_group_name")
+        await bind_argument("factory_name", "factory_name")
+
+        return await func(*bound_args.args, **bound_args.kwargs)
+
+    return cast(T, wrapper)
+
+
+class AzureDataFactoryAsyncHook(AzureDataFactoryHook):
+    """
+    An Async Hook that connects to Azure DataFactory to perform pipeline operations.
+
+    :param azure_data_factory_conn_id: The :ref:`Azure Data Factory connection id<howto/connection:adf>`.
+    """
+
+    default_conn_name: str = "azure_data_factory_default"
+
+    def __init__(self, azure_data_factory_conn_id: str = default_conn_name):
+        self._async_conn: AsyncDataFactoryManagementClient | None = None
+        self.conn_id = azure_data_factory_conn_id
+        super().__init__(azure_data_factory_conn_id=azure_data_factory_conn_id)
+
+    async def get_async_conn(self) -> AsyncDataFactoryManagementClient:
+        """Get async connection and connect to azure data factory."""
+        if self._async_conn is not None:
+            return self._async_conn
+
+        conn = await sync_to_async(self.get_connection)(self.conn_id)
+        extras = conn.extra_dejson
+        tenant = get_field(extras, "tenantId")
+
+        try:
+            subscription_id = get_field(extras, "subscriptionId", strict=True)
+        except KeyError:
+            raise ValueError("A Subscription ID is required to connect to Azure Data Factory.")
+
+        credential: AsyncCredentials
+        if conn.login is not None and conn.password is not None:
+            if not tenant:
+                raise ValueError("A Tenant ID is required when authenticating with Client ID and Secret.")
+
+            credential = AsyncClientSecretCredential(
+                client_id=conn.login, client_secret=conn.password, tenant_id=tenant
+            )
+        else:
+            managed_identity_client_id = get_field(extras, "managed_identity_client_id")
+            workload_identity_tenant_id = get_field(extras, "workload_identity_tenant_id")
+            credential = get_async_default_azure_credential(
+                managed_identity_client_id=managed_identity_client_id,
+                workload_identity_tenant_id=workload_identity_tenant_id,
+            )
+
+        self._async_conn = AsyncDataFactoryManagementClient(
+            credential=credential,
+            subscription_id=subscription_id,
+        )
+
+        return self._async_conn
+
+    async def refresh_conn(self) -> AsyncDataFactoryManagementClient:  # type: ignore[override]
+        self._conn = None
+        return await self.get_async_conn()
+
+    @provide_targeted_factory_async
+    async def get_pipeline_run(
+        self,
+        run_id: str,
+        resource_group_name: str,
+        factory_name: str,
+        **config: Any,
+    ) -> PipelineRun:
+        """
+        Connect to Azure Data Factory asynchronously to get the pipeline run details by run id.
+
+        :param run_id: The pipeline run identifier.
+        :param resource_group_name: The resource group name.
+        :param factory_name: The factory name.
+        :param config: Extra parameters for the ADF client.
+        """
+        client = await self.get_async_conn()
+        pipeline_run = await client.pipeline_runs.get(resource_group_name, factory_name, run_id)
+        return pipeline_run
+
+    async def get_adf_pipeline_run_status(
+        self, run_id: str, resource_group_name: str, factory_name: str
+    ) -> str:
+        """
+        Connect to Azure Data Factory asynchronously and get the pipeline status by run_id.
+
+        :param run_id: The pipeline run identifier.
+        :param resource_group_name: The resource group name.
+        :param factory_name: The factory name.
+        """
+        pipeline_run = await self.get_pipeline_run(run_id, resource_group_name, factory_name)
+        status: str = cast(str, pipeline_run.status)
+        return status
+
+    @provide_targeted_factory_async
+    async def cancel_pipeline_run(
+        self,
+        run_id: str,
+        resource_group_name: str,
+        factory_name: str,
+        **config: Any,
+    ) -> None:
+        """
+        Cancel the pipeline run.
+
+        :param run_id: The pipeline run identifier.
+        :param resource_group_name: The resource group name.
+        :param factory_name: The factory name.
+        :param config: Extra parameters for the ADF client.
+        """
+        client = await self.get_async_conn()
+        try:
+            await client.pipeline_runs.cancel(resource_group_name, factory_name, run_id)
+        except Exception as e:
+            raise AirflowException(e)

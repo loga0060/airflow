@@ -16,7 +16,6 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-
 from __future__ import annotations
 
 import ast
@@ -37,6 +36,7 @@ IGNORED = {
     "email_on_retry",
     "post_execute",
     "pre_execute",
+    "multiple_outputs",
     # Doesn't matter, not used anywhere.
     "default_args",
     # Deprecated and is aliased to max_active_tis_per_dag.
@@ -45,12 +45,11 @@ IGNORED = {
     "HIDE_ATTRS_FROM_UI",
     # Only on BaseOperator.
     "_dag",
-    "mapped_arguments_validated_by_init",
     "output",
     "partial",
     "shallow_copy_attrs",
     # Only on MappedOperator.
-    "mapped_kwargs",
+    "expand_input",
     "partial_kwargs",
 }
 
@@ -111,9 +110,9 @@ def _iter_assignment_to_self_attributes(targets: typing.Iterable[ast.expr]) -> t
     for t in targets:
         if isinstance(t, ast.Attribute) and isinstance(t.value, ast.Name) and t.value.id == "self":
             yield t.attr  # Something like "self.foo = ...".
-            continue
-        # Recursively visit nodes in unpacking assignments like "a, b = ...".
-        yield from _iter_assignment_to_self_attributes(getattr(t, "elts", ()))
+        else:
+            # Recursively visit nodes in unpacking assignments like "a, b = ...".
+            yield from _iter_assignment_to_self_attributes(getattr(t, "elts", ()))
 
 
 def _iter_assignment_targets(func: ast.FunctionDef) -> typing.Iterator[str]:
@@ -128,9 +127,7 @@ def _is_property(f: ast.FunctionDef) -> bool:
     if len(f.decorator_list) != 1:
         return False
     decorator = f.decorator_list[0]
-    if not isinstance(decorator, ast.Name):
-        return False
-    return decorator.id == "property"
+    return isinstance(decorator, ast.Name) and decorator.id == "property"
 
 
 def _iter_member_names(klass: ast.ClassDef) -> typing.Iterator[str]:
@@ -139,6 +136,9 @@ def _iter_member_names(klass: ast.ClassDef) -> typing.Iterator[str]:
             yield node.target.id
         elif isinstance(node, ast.FunctionDef) and _is_property(node):
             yield node.name
+        elif isinstance(node, ast.Assign):
+            if len(node.targets) == 1 and isinstance(target := node.targets[0], ast.Name):
+                yield target.id
 
 
 def check_operator_member_parity() -> bool:

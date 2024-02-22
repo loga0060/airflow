@@ -15,15 +15,15 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-
 """This module contains an operator to move data from an S3 bucket to Hive."""
+from __future__ import annotations
 
 import bz2
 import gzip
 import os
 import tempfile
 from tempfile import NamedTemporaryFile, TemporaryDirectory
-from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Union
+from typing import TYPE_CHECKING, Any, Sequence
 
 from airflow.exceptions import AirflowException
 from airflow.models import BaseOperator
@@ -37,8 +37,11 @@ if TYPE_CHECKING:
 
 class S3ToHiveOperator(BaseOperator):
     """
-    Moves data from S3 to Hive. The operator downloads a file from S3,
-    stores the file locally before loading it into a Hive table.
+    Moves data from S3 to Hive.
+
+    The operator downloads a file from S3, stores the file locally
+    before loading it into a Hive table.
+
     If the ``create`` or ``recreate`` arguments are set to ``True``,
     a ``CREATE TABLE`` and ``DROP TABLE`` statements are generated.
     Hive data types are inferred from the cursor's metadata from.
@@ -86,29 +89,30 @@ class S3ToHiveOperator(BaseOperator):
     :param select_expression: S3 Select expression
     """
 
-    template_fields: Sequence[str] = ('s3_key', 'partition', 'hive_table')
+    template_fields: Sequence[str] = ("s3_key", "partition", "hive_table")
     template_ext: Sequence[str] = ()
-    ui_color = '#a0e08c'
+    ui_color = "#a0e08c"
 
     def __init__(
         self,
         *,
         s3_key: str,
-        field_dict: Dict,
+        field_dict: dict,
         hive_table: str,
-        delimiter: str = ',',
+        delimiter: str = ",",
         create: bool = True,
         recreate: bool = False,
-        partition: Optional[Dict] = None,
+        partition: dict | None = None,
         headers: bool = False,
         check_headers: bool = False,
         wildcard_match: bool = False,
-        aws_conn_id: str = 'aws_default',
-        verify: Optional[Union[bool, str]] = None,
-        hive_cli_conn_id: str = 'hive_cli_default',
+        aws_conn_id: str = "aws_default",
+        verify: bool | str | None = None,
+        hive_cli_conn_id: str = "hive_cli_default",
         input_compressed: bool = False,
-        tblproperties: Optional[Dict] = None,
-        select_expression: Optional[str] = None,
+        tblproperties: dict | None = None,
+        select_expression: str | None = None,
+        hive_auth: str | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -128,14 +132,15 @@ class S3ToHiveOperator(BaseOperator):
         self.input_compressed = input_compressed
         self.tblproperties = tblproperties
         self.select_expression = select_expression
+        self.hive_auth = hive_auth
 
         if self.check_headers and not (self.field_dict is not None and self.headers):
             raise AirflowException("To check_headers provide field_dict and headers")
 
-    def execute(self, context: 'Context'):
+    def execute(self, context: Context):
         # Downloading file from S3
         s3_hook = S3Hook(aws_conn_id=self.aws_conn_id, verify=self.verify)
-        hive_hook = HiveCliHook(hive_cli_conn_id=self.hive_cli_conn_id)
+        hive_hook = HiveCliHook(hive_cli_conn_id=self.hive_cli_conn_id, auth=self.hive_auth)
         self.log.info("Downloading S3 file")
 
         if self.wildcard_match:
@@ -147,24 +152,28 @@ class S3ToHiveOperator(BaseOperator):
 
         else:
             raise AirflowException(f"The key {self.s3_key} does not exists")
+
+        if TYPE_CHECKING:
+            assert s3_key_object
+
         _, file_ext = os.path.splitext(s3_key_object.key)
-        if self.select_expression and self.input_compressed and file_ext.lower() != '.gz':
+        if self.select_expression and self.input_compressed and file_ext.lower() != ".gz":
             raise AirflowException("GZIP is the only compression format Amazon S3 Select supports")
 
-        with TemporaryDirectory(prefix='tmps32hive_') as tmp_dir, NamedTemporaryFile(
+        with TemporaryDirectory(prefix="tmps32hive_") as tmp_dir, NamedTemporaryFile(
             mode="wb", dir=tmp_dir, suffix=file_ext
         ) as f:
             self.log.info("Dumping S3 key %s contents to local file %s", s3_key_object.key, f.name)
             if self.select_expression:
                 option = {}
                 if self.headers:
-                    option['FileHeaderInfo'] = 'USE'
+                    option["FileHeaderInfo"] = "USE"
                 if self.delimiter:
-                    option['FieldDelimiter'] = self.delimiter
+                    option["FieldDelimiter"] = self.delimiter
 
-                input_serialization: Dict[str, Any] = {'CSV': option}
+                input_serialization: dict[str, Any] = {"CSV": option}
                 if self.input_compressed:
-                    input_serialization['CompressionType'] = 'GZIP'
+                    input_serialization["CompressionType"] = "GZIP"
 
                 content = s3_hook.select_key(
                     bucket_name=s3_key_object.bucket_name,
@@ -238,28 +247,28 @@ class S3ToHiveOperator(BaseOperator):
                 "Headers count mismatch File headers:\n %s\nField names: \n %s\n", header_list, field_names
             )
             return False
-        test_field_match = [h1.lower() == h2.lower() for h1, h2 in zip(header_list, field_names)]
-        if not all(test_field_match):
+        test_field_match = all(h1.lower() == h2.lower() for h1, h2 in zip(header_list, field_names))
+        if test_field_match:
+            return True
+        else:
             self.log.warning(
                 "Headers do not match field names File headers:\n %s\nField names: \n %s\n",
                 header_list,
                 field_names,
             )
             return False
-        else:
-            return True
 
     @staticmethod
     def _delete_top_row_and_compress(input_file_name, output_file_ext, dest_dir):
         # When output_file_ext is not defined, file is not compressed
         open_fn = open
-        if output_file_ext.lower() == '.gz':
+        if output_file_ext.lower() == ".gz":
             open_fn = gzip.GzipFile
-        elif output_file_ext.lower() == '.bz2':
+        elif output_file_ext.lower() == ".bz2":
             open_fn = bz2.BZ2File
 
         _, fn_output = tempfile.mkstemp(suffix=output_file_ext, dir=dest_dir)
-        with open(input_file_name, 'rb') as f_in, open_fn(fn_output, 'wb') as f_out:
+        with open(input_file_name, "rb") as f_in, open_fn(fn_output, "wb") as f_out:
             f_in.seek(0)
             next(f_in)
             for line in f_in:

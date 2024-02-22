@@ -16,12 +16,14 @@
 # specific language governing permissions and limitations
 # under the License.
 """Hook for sending or receiving data from PagerDuty as well as creating PagerDuty incidents."""
-import warnings
-from typing import Any, Dict, List, Optional
+from __future__ import annotations
+
+from typing import Any
 
 import pdpyras
+from deprecated import deprecated
 
-from airflow.exceptions import AirflowException
+from airflow.exceptions import AirflowException, AirflowProviderDeprecationWarning
 from airflow.hooks.base import BaseHook
 from airflow.providers.pagerduty.hooks.pagerduty_events import PagerdutyEventsHook
 
@@ -48,17 +50,34 @@ class PagerdutyHook(BaseHook):
     conn_type = "pagerduty"
     hook_name = "Pagerduty"
 
-    @staticmethod
-    def get_ui_field_behaviour() -> Dict[str, Any]:
-        """Returns custom field behaviour"""
+    @classmethod
+    def get_ui_field_behaviour(cls) -> dict[str, Any]:
+        """Return custom field behaviour."""
         return {
-            "hidden_fields": ['port', 'login', 'schema', 'host'],
+            "hidden_fields": ["port", "login", "schema", "host", "extra"],
             "relabeling": {
-                'password': 'Pagerduty API token',
+                "password": "Pagerduty API token",
             },
         }
 
-    def __init__(self, token: Optional[str] = None, pagerduty_conn_id: Optional[str] = None) -> None:
+    @classmethod
+    def get_connection_form_widgets(cls) -> dict[str, Any]:
+        """Return connection widgets to add to connection form."""
+        from flask_appbuilder.fieldwidgets import BS3PasswordFieldWidget
+        from flask_babel import lazy_gettext
+        from wtforms import PasswordField
+        from wtforms.validators import Optional
+
+        return {
+            "routing_key": PasswordField(
+                lazy_gettext("Routing Key"),
+                widget=BS3PasswordFieldWidget(),
+                validators=[Optional()],
+                default=None,
+            ),
+        }
+
+    def __init__(self, token: str | None = None, pagerduty_conn_id: str | None = None) -> None:
         super().__init__()
         self.routing_key = None
         self._session = None
@@ -75,11 +94,11 @@ class PagerdutyHook(BaseHook):
             self.token = token
 
         if self.token is None:
-            raise AirflowException('Cannot get token: No valid api token nor pagerduty_conn_id supplied.')
+            raise AirflowException("Cannot get token: No valid api token nor pagerduty_conn_id supplied.")
 
     def get_session(self) -> pdpyras.APISession:
         """
-        Returns `pdpyras.APISession` for use with sending or receiving data through the PagerDuty REST API.
+        Return `pdpyras.APISession` for use with sending or receiving data through the PagerDuty REST API.
 
         The `pdpyras` library supplies a class `pdpyras.APISession` extending `requests.Session` from the
         Requests HTTP library.
@@ -90,21 +109,28 @@ class PagerdutyHook(BaseHook):
         self._session = pdpyras.APISession(self.token)
         return self._session
 
+    @deprecated(
+        reason=(
+            "This method will be deprecated. Please use the "
+            "`airflow.providers.pagerduty.hooks.PagerdutyEventsHook` to interact with the Events API"
+        ),
+        category=AirflowProviderDeprecationWarning,
+    )
     def create_event(
         self,
         summary: str,
         severity: str,
         source: str = "airflow",
         action: str = "trigger",
-        routing_key: Optional[str] = None,
-        dedup_key: Optional[str] = None,
-        custom_details: Optional[Any] = None,
-        group: Optional[str] = None,
-        component: Optional[str] = None,
-        class_type: Optional[str] = None,
-        images: Optional[List[Any]] = None,
-        links: Optional[List[Any]] = None,
-    ) -> Dict:
+        routing_key: str | None = None,
+        dedup_key: str | None = None,
+        custom_details: Any | None = None,
+        group: str | None = None,
+        component: str | None = None,
+        class_type: str | None = None,
+        images: list[Any] | None = None,
+        links: list[Any] | None = None,
+    ) -> dict:
         """
         Create event for service integration.
 
@@ -121,7 +147,7 @@ class PagerdutyHook(BaseHook):
         :param custom_details: Free-form details from the event. Can be a dictionary or a string.
             If a dictionary is passed it will show up in PagerDuty as a table.
         :param group: A cluster or grouping of sources. For example, sources
-            “prod-datapipe-02” and “prod-datapipe-03” might both be part of “prod-datapipe”
+            "prod-datapipe-02" and "prod-datapipe-03" might both be part of "prod-datapipe"
         :param component: The part or component of the affected system that is broken.
         :param class_type: The class/type of the event.
         :param images: List of images to include. Each dictionary in the list accepts the following keys:
@@ -134,15 +160,7 @@ class PagerdutyHook(BaseHook):
             `text`: [Optional] Plain text that describes the purpose of the link, and can be used as the
             link's text.
         :return: PagerDuty Events API v2 response.
-        :rtype: dict
         """
-        warnings.warn(
-            "This method will be deprecated. Please use the "
-            "`airflow.providers.pagerduty.hooks.PagerdutyEventsHook` to interact with the Events API",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-
         routing_key = routing_key or self.routing_key
 
         return PagerdutyEventsHook(integration_key=routing_key).create_event(
@@ -158,3 +176,11 @@ class PagerdutyHook(BaseHook):
             images=images,
             links=links,
         )
+
+    def test_connection(self):
+        try:
+            session = pdpyras.APISession(self.token)
+            session.list_all("services", params={"query": "some_non_existing_service"})
+        except Exception:
+            return False, "connection test failed, invalid token"
+        return True, "connection tested successfully"

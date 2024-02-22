@@ -19,10 +19,18 @@
 ``apache-airflow-providers-tableau``
 =======================================
 
-Content
--------
 
 .. toctree::
+    :hidden:
+    :maxdepth: 1
+    :caption: Basics
+
+    Home <self>
+    Changelog <changelog>
+    Security <security>
+
+.. toctree::
+    :hidden:
     :maxdepth: 1
     :caption: References
 
@@ -32,15 +40,17 @@ Content
 
 .. toctree::
     :hidden:
+    :maxdepth: 1
     :caption: System tests
 
     System Tests <_api/tests/system/providers/tableau/index>
 
 .. toctree::
+    :hidden:
     :maxdepth: 1
     :caption: Resources
 
-    Example DAGs <https://github.com/apache/airflow/tree/providers-tableau/3.0.0/tests/system/providers/tableau>
+    Example DAGs <https://github.com/apache/airflow/tree/providers-tableau/|version|/tests/system/providers/tableau>
     PyPI Repository <https://pypi.org/project/apache-airflow-providers-tableau/>
     Installing from sources <installing-providers-from-sources>
 
@@ -48,41 +58,42 @@ Content
 
 
 .. toctree::
+    :hidden:
     :maxdepth: 1
     :caption: Commits
 
     Detailed list of commits <commits>
 
 
-Package apache-airflow-providers-tableau
+apache-airflow-providers-tableau package
 ------------------------------------------------------
 
 `Tableau <https://www.tableau.com/>`__
 
 
-Release: 3.0.0
+Release: 4.4.2
 
 Provider package
 ----------------
 
-This is a provider package for ``tableau`` provider. All classes for this provider package
-are in ``airflow.providers.tableau`` python package.
+This package is for the ``tableau`` provider.
+All classes for this package are included in the ``airflow.providers.tableau`` python package.
 
 Installation
 ------------
 
-You can install this package on top of an existing Airflow 2 installation (see ``Requirements`` below)
-for the minimum Airflow version supported) via
-``pip install apache-airflow-providers-tableau``
+You can install this package on top of an existing Airflow 2 installation via
+``pip install apache-airflow-providers-tableau``.
+For the minimum Airflow version supported, see ``Requirements`` below.
 
 Requirements
 ------------
 
+The minimum Apache Airflow version supported by this provider package is ``2.6.0``.
+
 =======================  ==================
 PIP package              Version required
 =======================  ==================
-``apache-airflow``       ``>=2.2.0``
+``apache-airflow``       ``>=2.6.0``
 ``tableauserverclient``
 =======================  ==================
-
-.. include:: ../../airflow/providers/tableau/CHANGELOG.rst

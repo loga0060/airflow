@@ -26,11 +26,12 @@ can find in the Airflow UI.
 
 DAGs View
 .........
+
 List of the DAGs in your environment, and a set of shortcuts to useful pages.
 You can see exactly how many tasks succeeded, failed, or are currently
-running at a glance. To hide completed tasks set show_recent_stats_for_completed_runs = False
+running at a glance. To hide completed tasks set ``show_recent_stats_for_completed_runs = False``
 
-In order to filter DAGs (e.g by team), you can add tags in each dag.
+In order to filter DAGs (e.g by team), you can add tags in each DAG.
 The filter is saved in a cookie and can be reset by the reset button.
 For example:
 
@@ -46,8 +47,25 @@ For example:
 ------------
 
 
+.. _ui:datasets-view:
+
+Datasets View
+.............
+
+A combined listing of the current datasets and a graph illustrating how they are produced and consumed by DAGs.
+
+Clicking on any dataset in either the list or the graph will highlight it and its relationships, and filter the list to show the recent history of task instances that have updated that dataset and whether it has triggered further DAG runs.
+
+------------
+
+.. image:: img/datasets.png
+
+------------
+
+
 Grid View
 .........
+
 A bar chart and grid representation of the DAG that spans across time.
 The top row is a chart of DAG Runs by duration,
 and below, task instances. If a pipeline is late,
@@ -76,7 +94,7 @@ Task groups are indicated by a caret and can be opened or closed:
 
 .. image:: img/grid_task_group.png
 
-Mapped Tasks are indicated by square brackets and will show a table of each mapped task instance in the details panel:
+Mapped Tasks are indicated by square brackets and will show a table of each mapped task instance in the Mapped Tasks panel:
 
 .. image:: img/grid_mapped_task.png
 
@@ -87,6 +105,7 @@ Mapped Tasks are indicated by square brackets and will show a table of each mapp
 
 Graph View
 ..........
+
 The graph view is perhaps the most comprehensive. Visualize your DAG's
 dependencies and their current status for a specific run.
 
@@ -98,6 +117,7 @@ dependencies and their current status for a specific run.
 
 Calendar View
 .............
+
 The calendar view gives you an overview of your entire DAG's history over months, or even years.
 Letting you quickly see trends of the overall success/failure rate of runs over time.
 
@@ -109,10 +129,11 @@ Letting you quickly see trends of the overall success/failure rate of runs over 
 
 Variable View
 .............
+
 The variable view allows you to list, create, edit or delete the key-value pair
 of a variable used during jobs. Value of a variable will be hidden if the key contains
 any words in ('password', 'secret', 'passwd', 'authorization', 'api_key', 'apikey', 'access_token')
-by default, but can be configured to show in clear-text. See :ref:`security:mask-sensitive-values`.
+by default, but can be configured to show in cleartext. See :ref:`security:mask-sensitive-values`.
 
 ------------
 
@@ -122,6 +143,7 @@ by default, but can be configured to show in clear-text. See :ref:`security:mask
 
 Gantt Chart
 ...........
+
 The Gantt chart lets you analyse task duration and overlap. You can quickly
 identify bottlenecks and where the bulk of the time is spent for specific
 DAG runs.
@@ -132,8 +154,11 @@ DAG runs.
 
 ------------
 
+.. _ui:task-duration:
+
 Task Duration
 .............
+
 The duration of your different tasks over the past N runs. This view lets
 you find outliers and quickly understand where the time is spent in your
 DAG over many runs.
@@ -145,8 +170,23 @@ DAG over many runs.
 
 ------------
 
+.. _ui:landing-times:
+
+Landing Times
+.............
+
+The landing time for a task instance is the delta between the dag run's data interval end
+(typically this means, when the dag "should" run) and the task instance completion time.
+
+------------
+
+.. image:: img/landing_times.png
+
+------------
+
 Code View
 .........
+
 Transparency is everything. While the code for your pipeline is in source
 control, this is a quick way to get to the code that generates the DAG and
 provide yet more context.
@@ -155,14 +195,12 @@ provide yet more context.
 
 .. image:: img/code.png
 
-------------
+Trigger Form
+............
 
-Task Instance Context Menu
-..........................
-From the pages seen above (grid view, graph view, gantt, ...), it is always
-possible to click on a task instance, and get to this rich context menu
-that can take you to more detailed metadata, and perform some actions.
+If you trigger a manual DAG run with the arrow-button, a form is displayed.
+The form display is based on the DAG Parameters as described in :doc:`core-concepts/params`.
 
 ------------
 
-.. image:: img/context.png
+.. image:: img/trigger-dag-tutorial-form.png

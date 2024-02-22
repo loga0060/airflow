@@ -30,50 +30,118 @@ The definition of a successful run is if the run has a result_state of "SUCCESS"
 For more information about the state of a run refer to
 https://docs.databricks.com/api/latest/jobs.html#runstate
 """
+from __future__ import annotations
 
 import os
 from datetime import datetime
 
 from airflow import DAG
-from airflow.providers.databricks.operators.databricks import DatabricksSubmitRunOperator
+from airflow.providers.databricks.operators.databricks import (
+    DatabricksCreateJobsOperator,
+    DatabricksRunNowOperator,
+    DatabricksSubmitRunOperator,
+)
 
 ENV_ID = os.environ.get("SYSTEM_TESTS_ENV_ID")
 DAG_ID = "example_databricks_operator"
 
 with DAG(
     dag_id=DAG_ID,
-    schedule_interval='@daily',
+    schedule="@daily",
     start_date=datetime(2021, 1, 1),
-    tags=['example'],
+    tags=["example"],
     catchup=False,
 ) as dag:
+    # [START howto_operator_databricks_jobs_create_json]
+    # Example of using the JSON parameter to initialize the operator.
+    job = {
+        "tasks": [
+            {
+                "task_key": "test",
+                "job_cluster_key": "job_cluster",
+                "notebook_task": {
+                    "notebook_path": "/Shared/test",
+                },
+            },
+        ],
+        "job_clusters": [
+            {
+                "job_cluster_key": "job_cluster",
+                "new_cluster": {
+                    "spark_version": "7.3.x-scala2.12",
+                    "node_type_id": "i3.xlarge",
+                    "num_workers": 2,
+                },
+            },
+        ],
+    }
+
+    jobs_create_json = DatabricksCreateJobsOperator(task_id="jobs_create_json", json=job)
+    # [END howto_operator_databricks_jobs_create_json]
+
+    # [START howto_operator_databricks_jobs_create_named]
+    # Example of using the named parameters to initialize the operator.
+    tasks = [
+        {
+            "task_key": "test",
+            "job_cluster_key": "job_cluster",
+            "notebook_task": {
+                "notebook_path": "/Shared/test",
+            },
+        },
+    ]
+    job_clusters = [
+        {
+            "job_cluster_key": "job_cluster",
+            "new_cluster": {
+                "spark_version": "7.3.x-scala2.12",
+                "node_type_id": "i3.xlarge",
+                "num_workers": 2,
+            },
+        },
+    ]
+
+    jobs_create_named = DatabricksCreateJobsOperator(
+        task_id="jobs_create_named", tasks=tasks, job_clusters=job_clusters
+    )
+    # [END howto_operator_databricks_jobs_create_named]
+
+    # [START howto_operator_databricks_run_now]
+    # Example of using the DatabricksRunNowOperator after creating a job with DatabricksCreateJobsOperator.
+    run_now = DatabricksRunNowOperator(
+        task_id="run_now", job_id="{{ ti.xcom_pull(task_ids='jobs_create_named') }}"
+    )
+
+    jobs_create_named >> run_now
+    # [END howto_operator_databricks_run_now]
+
     # [START howto_operator_databricks_json]
     # Example of using the JSON parameter to initialize the operator.
     new_cluster = {
-        'spark_version': '9.1.x-scala2.12',
-        'node_type_id': 'r3.xlarge',
-        'aws_attributes': {'availability': 'ON_DEMAND'},
-        'num_workers': 8,
+        "spark_version": "9.1.x-scala2.12",
+        "node_type_id": "r3.xlarge",
+        "aws_attributes": {"availability": "ON_DEMAND"},
+        "num_workers": 8,
     }
 
     notebook_task_params = {
-        'new_cluster': new_cluster,
-        'notebook_task': {
-            'notebook_path': '/Users/airflow@example.com/PrepareData',
+        "new_cluster": new_cluster,
+        "notebook_task": {
+            "notebook_path": "/Users/airflow@example.com/PrepareData",
         },
     }
 
-    notebook_task = DatabricksSubmitRunOperator(task_id='notebook_task', json=notebook_task_params)
+    notebook_task = DatabricksSubmitRunOperator(task_id="notebook_task", json=notebook_task_params)
     # [END howto_operator_databricks_json]
 
     # [START howto_operator_databricks_named]
     # Example of using the named parameters of DatabricksSubmitRunOperator
     # to initialize the operator.
     spark_jar_task = DatabricksSubmitRunOperator(
-        task_id='spark_jar_task',
+        task_id="spark_jar_task",
         new_cluster=new_cluster,
-        spark_jar_task={'main_class_name': 'com.example.ProcessData'},
-        libraries=[{'jar': 'dbfs:/lib/etl-0.1.jar'}],
+        spark_jar_task={"main_class_name": "com.example.ProcessData"},
+        libraries=[{"jar": "dbfs:/lib/etl-0.1.jar"}],
     )
     # [END howto_operator_databricks_named]
     notebook_task >> spark_jar_task

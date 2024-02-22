@@ -15,10 +15,12 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
 
-import unittest
 from unittest import mock
 from unittest.mock import call
+
+import pytest
 
 from airflow.providers.google.cloud.transfers.cassandra_to_gcs import CassandraToGCSOperator
 
@@ -30,7 +32,8 @@ CQL = "select * from keyspace1.table1"
 TASK_ID = "test-cas-to-gcs"
 
 
-class TestCassandraToGCS(unittest.TestCase):
+class TestCassandraToGCS:
+    @pytest.mark.db_test
     @mock.patch("airflow.providers.google.cloud.transfers.cassandra_to_gcs.NamedTemporaryFile")
     @mock.patch("airflow.providers.google.cloud.transfers.cassandra_to_gcs.GCSHook.upload")
     @mock.patch("airflow.providers.google.cloud.transfers.cassandra_to_gcs.CassandraHook")

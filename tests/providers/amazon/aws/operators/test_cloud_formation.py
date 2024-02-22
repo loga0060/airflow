@@ -15,8 +15,12 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-import unittest
-from unittest.mock import MagicMock, patch
+from __future__ import annotations
+
+from unittest import mock
+from unittest.mock import MagicMock
+
+import pytest
 
 from airflow.models.dag import DAG
 from airflow.providers.amazon.aws.operators.cloud_formation import (
@@ -26,66 +30,98 @@ from airflow.providers.amazon.aws.operators.cloud_formation import (
 from airflow.utils import timezone
 
 DEFAULT_DATE = timezone.datetime(2019, 1, 1)
+DEFAULT_ARGS = {"owner": "airflow", "start_date": DEFAULT_DATE}
 
 
-class TestCloudFormationCreateStackOperator(unittest.TestCase):
-    def setUp(self):
-        self.args = {'owner': 'airflow', 'start_date': DEFAULT_DATE}
+@pytest.fixture
+def mocked_hook_client():
+    with mock.patch("airflow.providers.amazon.aws.hooks.cloud_formation.CloudFormationHook.conn") as m:
+        yield m
 
-        # Mock out the cloudformation_client (moto fails with an exception).
-        self.cloudformation_client_mock = MagicMock()
 
-        # Mock out the emr_client creator
-        cloudformation_session_mock = MagicMock()
-        cloudformation_session_mock.client.return_value = self.cloudformation_client_mock
-        self.boto3_session_mock = MagicMock(return_value=cloudformation_session_mock)
+class TestCloudFormationCreateStackOperator:
+    def test_init(self):
+        op = CloudFormationCreateStackOperator(
+            task_id="cf_create_stack_init",
+            stack_name="fake-stack",
+            cloudformation_parameters={},
+            # Generic hooks parameters
+            aws_conn_id="fake-conn-id",
+            region_name="eu-west-1",
+            verify=True,
+            botocore_config={"read_timeout": 42},
+        )
+        assert op.hook.client_type == "cloudformation"
+        assert op.hook.resource_type is None
+        assert op.hook.aws_conn_id == "fake-conn-id"
+        assert op.hook._region_name == "eu-west-1"
+        assert op.hook._verify is True
+        assert op.hook._config is not None
+        assert op.hook._config.read_timeout == 42
 
-        self.mock_context = MagicMock()
+        op = CloudFormationCreateStackOperator(
+            task_id="cf_create_stack_init",
+            stack_name="fake-stack",
+            cloudformation_parameters={},
+        )
+        assert op.hook.aws_conn_id == "aws_default"
+        assert op.hook._region_name is None
+        assert op.hook._verify is None
+        assert op.hook._config is None
 
-    def test_create_stack(self):
+    def test_create_stack(self, mocked_hook_client):
         stack_name = "myStack"
         timeout = 15
         template_body = "My stack body"
 
         operator = CloudFormationCreateStackOperator(
-            task_id='test_task',
+            task_id="test_task",
             stack_name=stack_name,
-            cloudformation_parameters={'TimeoutInMinutes': timeout, 'TemplateBody': template_body},
-            dag=DAG('test_dag_id', default_args=self.args),
+            cloudformation_parameters={"TimeoutInMinutes": timeout, "TemplateBody": template_body},
+            dag=DAG("test_dag_id", default_args=DEFAULT_ARGS),
         )
 
-        with patch('boto3.session.Session', self.boto3_session_mock):
-            operator.execute(self.mock_context)
+        operator.execute(MagicMock())
 
-        self.cloudformation_client_mock.create_stack.assert_any_call(
+        mocked_hook_client.create_stack.assert_any_call(
             StackName=stack_name, TemplateBody=template_body, TimeoutInMinutes=timeout
         )
 
 
-class TestCloudFormationDeleteStackOperator(unittest.TestCase):
-    def setUp(self):
-        self.args = {'owner': 'airflow', 'start_date': DEFAULT_DATE}
+class TestCloudFormationDeleteStackOperator:
+    def test_init(self):
+        op = CloudFormationDeleteStackOperator(
+            task_id="cf_delete_stack_init",
+            stack_name="fake-stack",
+            # Generic hooks parameters
+            aws_conn_id="fake-conn-id",
+            region_name="us-east-1",
+            verify=False,
+            botocore_config={"read_timeout": 42},
+        )
+        assert op.hook.client_type == "cloudformation"
+        assert op.hook.resource_type is None
+        assert op.hook.aws_conn_id == "fake-conn-id"
+        assert op.hook._region_name == "us-east-1"
+        assert op.hook._verify is False
+        assert op.hook._config is not None
+        assert op.hook._config.read_timeout == 42
 
-        # Mock out the cloudformation_client (moto fails with an exception).
-        self.cloudformation_client_mock = MagicMock()
+        op = CloudFormationDeleteStackOperator(task_id="cf_delete_stack_init", stack_name="fake-stack")
+        assert op.hook.aws_conn_id == "aws_default"
+        assert op.hook._region_name is None
+        assert op.hook._verify is None
+        assert op.hook._config is None
 
-        # Mock out the emr_client creator
-        cloudformation_session_mock = MagicMock()
-        cloudformation_session_mock.client.return_value = self.cloudformation_client_mock
-        self.boto3_session_mock = MagicMock(return_value=cloudformation_session_mock)
-
-        self.mock_context = MagicMock()
-
-    def test_delete_stack(self):
+    def test_delete_stack(self, mocked_hook_client):
         stack_name = "myStackToBeDeleted"
 
         operator = CloudFormationDeleteStackOperator(
-            task_id='test_task',
+            task_id="test_task",
             stack_name=stack_name,
-            dag=DAG('test_dag_id', default_args=self.args),
+            dag=DAG("test_dag_id", default_args=DEFAULT_ARGS),
         )
 
-        with patch('boto3.session.Session', self.boto3_session_mock):
-            operator.execute(self.mock_context)
+        operator.execute(MagicMock())
 
-        self.cloudformation_client_mock.delete_stack.assert_any_call(StackName=stack_name)
+        mocked_hook_client.delete_stack.assert_any_call(StackName=stack_name)

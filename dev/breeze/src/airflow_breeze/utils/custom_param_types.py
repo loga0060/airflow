@@ -14,13 +14,15 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
 
+import os
+import re
 from dataclasses import dataclass
-from re import match
-from typing import Any, Optional, Sequence
+from typing import Any, Sequence
 
 import click
-from click import Context, Parameter
+from click import Context, Parameter, ParamType
 
 from airflow_breeze.utils.cache import (
     check_if_values_allowed,
@@ -28,9 +30,10 @@ from airflow_breeze.utils.cache import (
     read_from_cache_file,
     write_to_cache_file,
 )
-from airflow_breeze.utils.confirm import set_forced_answer
+from airflow_breeze.utils.coertions import coerce_bool_value
 from airflow_breeze.utils.console import get_console
-from airflow_breeze.utils.recording import output_file_for_recording
+from airflow_breeze.utils.recording import generating_command_images
+from airflow_breeze.utils.shared_options import set_dry_run, set_forced_answer, set_verbose
 
 
 class BetterChoice(click.Choice):
@@ -69,7 +72,7 @@ class NotVerifiedBetterChoice(BetterChoice):
 
     name = "NotVerifiedBetterChoice"
 
-    def convert(self, value: Any, param: Optional[Parameter], ctx: Optional[Context]) -> Any:
+    def convert(self, value: Any, param: Parameter | None, ctx: Context | None) -> Any:
         # Match through normalization and case sensitivity
         # first do token_normalize_func, then lowercase
         normed_value = value
@@ -105,6 +108,30 @@ class AnswerChoice(BetterChoice):
         return super().convert(value, param, ctx)
 
 
+class VerboseOption(ParamType):
+    """
+    Stores and allows to retrieve verbose option
+    """
+
+    name = "VerboseOption"
+
+    def convert(self, value, param, ctx):
+        set_verbose(coerce_bool_value(value))
+        return super().convert(value, param, ctx)
+
+
+class DryRunOption(ParamType):
+    """
+    Stores and allows to retrieve dry_run option
+    """
+
+    name = "DryRunOption"
+
+    def convert(self, value, param, ctx):
+        set_dry_run(coerce_bool_value(value))
+        return super().convert(value, param, ctx)
+
+
 @dataclass
 class CacheableDefault:
     value: Any
@@ -128,7 +155,8 @@ class CacheableChoice(click.Choice):
             allowed, allowed_values = check_if_values_allowed(param_name, value)
             if allowed:
                 new_value = value
-                write_to_cache_file(param_name, new_value, check_allowed_values=False)
+                if not os.environ.get("SKIP_SAVING_CHOICES"):
+                    write_to_cache_file(param_name, new_value, check_allowed_values=False)
             else:
                 new_value = allowed_values[0]
                 get_console().print(
@@ -141,7 +169,7 @@ class CacheableChoice(click.Choice):
     def get_metavar(self, param) -> str:
         param_name = param.envvar if param.envvar else param.name.upper()
         current_value = (
-            read_from_cache_file(param_name) if not output_file_for_recording else param.default.value
+            read_from_cache_file(param_name) if not generating_command_images() else param.default.value
         )
         if not current_value:
             current_choices = self.choices
@@ -165,6 +193,31 @@ class CacheableChoice(click.Choice):
         super().__init__(choices=choices, case_sensitive=case_sensitive)
 
 
+class MySQLBackendVersionType(CacheableChoice):
+    def convert(self, value, param, ctx):
+        if isinstance(value, CacheableDefault):
+            param_name = param.envvar if param.envvar else param.name.upper()
+            mysql_version = read_from_cache_file(param_name)
+            if mysql_version == "8":
+                value = "8.0"
+                get_console().print(
+                    f"\n[warning]Found outdated cached value {mysql_version} for parameter {param.name}. "
+                    f"Replaced by {value}"
+                )
+                write_to_cache_file(param_name, "8.0", check_allowed_values=False)
+        else:
+            if value == "8":
+                value = "8.0"
+                get_console().print(
+                    f"\n[warning]Provided outdated value {8} for parameter {param.name}. "
+                    f"Will use {value} instead"
+                )
+        return super().convert(value, param, ctx)
+
+
+ALLOWED_VCS_PROTOCOLS = ("git+file://", "git+https://", "git+ssh://", "git+http://", "git+git://", "git://")
+
+
 class UseAirflowVersionType(BetterChoice):
     """Extends choice with dynamic version number."""
 
@@ -173,6 +226,8 @@ class UseAirflowVersionType(BetterChoice):
         self.all_choices = [*self.choices, "<airflow_version>"]
 
     def convert(self, value, param, ctx):
-        if match(r"^\d*\.\d*\.\d*\S*$", value):
+        if re.match(r"^\d*\.\d*\.\d*\S*$", value):
+            return value
+        if value.startswith(ALLOWED_VCS_PROTOCOLS):
             return value
         return super().convert(value, param, ctx)

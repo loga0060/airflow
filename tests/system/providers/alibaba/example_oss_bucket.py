@@ -14,9 +14,8 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
 
-# Ignore missing args provided by default_args
-# type: ignore[call-arg]
 import os
 from datetime import datetime
 
@@ -25,19 +24,19 @@ from airflow.providers.alibaba.cloud.operators.oss import OSSCreateBucketOperato
 
 ENV_ID = os.environ.get("SYSTEM_TESTS_ENV_ID")
 DAG_ID = "oss_bucket_dag"
+REGION = os.environ.get("REGION", "default_regior")
 # [START howto_operator_oss_bucket]
 with DAG(
     dag_id=DAG_ID,
     start_date=datetime(2021, 1, 1),
-    default_args={'bucket_name': 'your bucket', 'region': 'your region'},
+    default_args={"bucket_name": "your bucket", "region": "your region"},
     max_active_runs=1,
-    tags=['example'],
+    tags=["example"],
     catchup=False,
 ) as dag:
+    create_bucket = OSSCreateBucketOperator(task_id="task1", region=REGION)
 
-    create_bucket = OSSCreateBucketOperator(task_id='task1')
-
-    delete_bucket = OSSDeleteBucketOperator(task_id='task2')
+    delete_bucket = OSSDeleteBucketOperator(task_id="task2", region=REGION)
 
     create_bucket >> delete_bucket
 

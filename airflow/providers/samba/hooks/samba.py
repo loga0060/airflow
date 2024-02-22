@@ -15,16 +15,19 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
 
 import posixpath
 from functools import wraps
 from shutil import copyfileobj
-from typing import Dict, Optional
+from typing import TYPE_CHECKING, Any
 
 import smbclient
-import smbprotocol.connection
 
 from airflow.hooks.base import BaseHook
+
+if TYPE_CHECKING:
+    import smbprotocol.connection
 
 
 class SambaHook(BaseHook):
@@ -39,12 +42,12 @@ class SambaHook(BaseHook):
         the connection is used in its place.
     """
 
-    conn_name_attr = 'samba_conn_id'
-    default_conn_name = 'samba_default'
-    conn_type = 'samba'
-    hook_name = 'Samba'
+    conn_name_attr = "samba_conn_id"
+    default_conn_name = "samba_default"
+    conn_type = "samba"
+    hook_name = "Samba"
 
-    def __init__(self, samba_conn_id: str = default_conn_name, share: Optional[str] = None) -> None:
+    def __init__(self, samba_conn_id: str = default_conn_name, share: str | None = None) -> None:
         super().__init__()
         conn = self.get_connection(samba_conn_id)
 
@@ -54,7 +57,7 @@ class SambaHook(BaseHook):
         if not conn.password:
             self.log.info("Password not provided")
 
-        connection_cache: Dict[str, smbprotocol.connection.Connection] = {}
+        connection_cache: dict[str, smbprotocol.connection.Connection] = {}
 
         self._host = conn.host
         self._share = share or conn.schema
@@ -243,6 +246,14 @@ class SambaHook(BaseHook):
         )
 
     def push_from_local(self, destination_filepath: str, local_filepath: str):
-        """Push local file to samba server"""
+        """Push local file to samba server."""
         with open(local_filepath, "rb") as f, self.open_file(destination_filepath, mode="wb") as g:
             copyfileobj(f, g)
+
+    @classmethod
+    def get_ui_field_behaviour(cls) -> dict[str, Any]:
+        """Return custom field behaviour."""
+        return {
+            "hidden_fields": ["extra"],
+            "relabeling": {"schema": "Share"},
+        }

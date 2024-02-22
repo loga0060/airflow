@@ -15,31 +15,45 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
 
-import unittest
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+from airflow.exceptions import TaskDeferred
 from airflow.providers.amazon.aws.operators.emr import EmrTerminateJobFlowOperator
+from airflow.providers.amazon.aws.triggers.emr import EmrTerminateJobFlowTrigger
 
-TERMINATE_SUCCESS_RETURN = {'ResponseMetadata': {'HTTPStatusCode': 200}}
+TERMINATE_SUCCESS_RETURN = {"ResponseMetadata": {"HTTPStatusCode": 200}}
 
 
-class TestEmrTerminateJobFlowOperator(unittest.TestCase):
-    def setUp(self):
-        # Mock out the emr_client (moto has incorrect response)
-        mock_emr_client = MagicMock()
-        mock_emr_client.terminate_job_flows.return_value = TERMINATE_SUCCESS_RETURN
+@pytest.fixture
+def mocked_hook_client():
+    with patch("airflow.providers.amazon.aws.hooks.emr.EmrHook.conn") as m:
+        yield m
 
-        mock_emr_session = MagicMock()
-        mock_emr_session.client.return_value = mock_emr_client
 
-        # Mock out the emr_client creator
-        self.boto3_session_mock = MagicMock(return_value=mock_emr_session)
+class TestEmrTerminateJobFlowOperator:
+    def test_execute_terminates_the_job_flow_and_does_not_error(self, mocked_hook_client):
+        mocked_hook_client.terminate_job_flows.return_value = TERMINATE_SUCCESS_RETURN
+        operator = EmrTerminateJobFlowOperator(
+            task_id="test_task", job_flow_id="j-8989898989", aws_conn_id="aws_default"
+        )
 
-    def test_execute_terminates_the_job_flow_and_does_not_error(self):
-        with patch('boto3.session.Session', self.boto3_session_mock):
-            operator = EmrTerminateJobFlowOperator(
-                task_id='test_task', job_flow_id='j-8989898989', aws_conn_id='aws_default'
-            )
+        operator.execute(MagicMock())
 
+    def test_create_job_flow_deferrable(self, mocked_hook_client):
+        mocked_hook_client.terminate_job_flows.return_value = TERMINATE_SUCCESS_RETURN
+        operator = EmrTerminateJobFlowOperator(
+            task_id="test_task",
+            job_flow_id="j-8989898989",
+            aws_conn_id="aws_default",
+            deferrable=True,
+        )
+
+        with pytest.raises(TaskDeferred) as exc:
             operator.execute(MagicMock())
+        assert isinstance(
+            exc.value.trigger, EmrTerminateJobFlowTrigger
+        ), "Trigger is not a EmrTerminateJobFlowTrigger"

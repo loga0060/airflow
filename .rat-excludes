@@ -1,6 +1,7 @@
 # Note: these patterns are applied to single files or directories, not full paths
 # coverage/* will ignore any coverage dir, but airflow/www/static/coverage/* will match nothing
 
+.git-blame-ignore-revs
 .github/*
 .gitignore
 .gitattributes
@@ -9,12 +10,12 @@
 .airflowignore
 .babelrc
 .coverage
-.coveragerc
 .codecov.yml
 .codespellignorelines
-.eslintrc
 .eslintignore
-.flake8
+.eslintrc
+.prettierignore
+.prettierrc
 .rat-excludes
 .stylelintignore
 .stylelintrc
@@ -36,14 +37,14 @@ metastore_db
 .*md5
 .*zip
 .*lock
-unittests.cfg
 logs
 .bash_aliases
 venv
 files
 airflow.iml
 .gitmodules
-scripts/ci/installed_providers.txt
+prod_image_installed_providers.txt
+airflow_pre_installed_providers.txt
 
 # Generated doc files
 .*html
@@ -61,7 +62,7 @@ spelling_wordlist.txt
 # it is compatible according to http://www.apache.org/legal/resolved.html#category-a
 kerberos_auth.py
 airflow_api_auth_backend_kerberos_auth_py.html
-licenses/*
+3rd-party-licenses/*
 parallel.js
 underscore.js
 jquery.dataTables.min.js
@@ -77,6 +78,7 @@ flake8_diff.sh
 coverage*.xml
 _sources/*
 
+robots.txt
 rat-results.txt
 apache-airflow-.*\+source.tar.gz.*
 apache-airflow-.*\+bin.tar.gz.*
@@ -84,6 +86,7 @@ PULL_REQUEST_TEMPLATE.md
 PROVIDER_CHANGES*.md
 manifests/*
 redirects.txt
+reproducible_build.yaml
 
 # Locally mounted files
 .*egg-info/*
@@ -99,7 +102,7 @@ input_notebook.ipynb
 tmp
 
 # Vendored-in code
-_vendor
+.*_vendor
 
 # generated doc-only-changes.txt
 .latest-doc-only-change.txt
@@ -112,12 +115,44 @@ chart/.gitignore
 chart/values.schema.json
 chart/Chart.lock
 chart/values_schema.schema.json
-
-# A simplistic Robots.txt
-airflow/www/static/robots.txt
+chart/Chart.yaml
 
 # Generated autocomplete files
-dev/breeze/autocomplete/*
+./dev/breeze/autocomplete/*
 
 # Newsfragments are snippets that will be, eventually, consumed into RELEASE_NOTES
 newsfragments/*
+
+# Warning file generated
+warnings.txt
+
+# Dev stuff
+tests/*
+scripts/*
+images/*
+dev/*
+chart/*.iml
+out/*
+airflow-build-dockerfile*
+
+# Sha files
+.*sha256
+
+# DOAP file
+doap_airflow.rdf
+
+# pyenv
+.python-version
+
+# nvm (Node Version Manager)
+.nvmrc
+
+# PKG-INFO file
+PKG-INFO
+
+# checksum files
+.*\.md5sum
+
+# Openapi files
+.openapi-generator-ignore
+version.txt

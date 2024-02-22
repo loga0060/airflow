@@ -15,45 +15,55 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-#
 """This module contains a Google Cloud Vertex AI hook."""
+from __future__ import annotations
 
-from typing import Dict, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, Sequence
 
 from google.api_core.client_options import ClientOptions
 from google.api_core.gapic_v1.method import DEFAULT, _MethodDefault
-from google.api_core.operation import Operation
-from google.api_core.retry import Retry
 from google.cloud.aiplatform_v1 import DatasetServiceClient
-from google.cloud.aiplatform_v1.services.dataset_service.pagers import (
-    ListAnnotationsPager,
-    ListDataItemsPager,
-    ListDatasetsPager,
-)
-from google.cloud.aiplatform_v1.types import AnnotationSpec, Dataset, ExportDataConfig, ImportDataConfig
-from google.protobuf.field_mask_pb2 import FieldMask
 
-from airflow import AirflowException
+from airflow.exceptions import AirflowException
 from airflow.providers.google.common.consts import CLIENT_INFO
 from airflow.providers.google.common.hooks.base_google import GoogleBaseHook
+
+if TYPE_CHECKING:
+    from google.api_core.operation import Operation
+    from google.api_core.retry import Retry
+    from google.cloud.aiplatform_v1.services.dataset_service.pagers import (
+        ListAnnotationsPager,
+        ListDataItemsPager,
+        ListDatasetsPager,
+    )
+    from google.cloud.aiplatform_v1.types import AnnotationSpec, Dataset, ExportDataConfig, ImportDataConfig
+    from google.protobuf.field_mask_pb2 import FieldMask
 
 
 class DatasetHook(GoogleBaseHook):
     """Hook for Google Cloud Vertex AI Dataset APIs."""
 
-    def get_dataset_service_client(self, region: Optional[str] = None) -> DatasetServiceClient:
-        """Returns DatasetServiceClient."""
-        if region and region != 'global':
-            client_options = ClientOptions(api_endpoint=f'{region}-aiplatform.googleapis.com:443')
+    def __init__(self, **kwargs):
+        if kwargs.get("delegate_to") is not None:
+            raise RuntimeError(
+                "The `delegate_to` parameter has been deprecated before and finally removed in this version"
+                " of Google Provider. You MUST convert it to `impersonate_chain`"
+            )
+        super().__init__(**kwargs)
+
+    def get_dataset_service_client(self, region: str | None = None) -> DatasetServiceClient:
+        """Return DatasetServiceClient."""
+        if region and region != "global":
+            client_options = ClientOptions(api_endpoint=f"{region}-aiplatform.googleapis.com:443")
         else:
             client_options = ClientOptions()
 
         return DatasetServiceClient(
-            credentials=self._get_credentials(), client_info=CLIENT_INFO, client_options=client_options
+            credentials=self.get_credentials(), client_info=CLIENT_INFO, client_options=client_options
         )
 
-    def wait_for_operation(self, operation: Operation, timeout: Optional[float] = None):
-        """Waits for long-lasting operation to complete."""
+    def wait_for_operation(self, operation: Operation, timeout: float | None = None):
+        """Wait for long-lasting operation to complete."""
         try:
             return operation.result(timeout=timeout)
         except Exception:
@@ -61,8 +71,8 @@ class DatasetHook(GoogleBaseHook):
             raise AirflowException(error)
 
     @staticmethod
-    def extract_dataset_id(obj: Dict) -> str:
-        """Returns unique id of the dataset."""
+    def extract_dataset_id(obj: dict) -> str:
+        """Return unique id of the dataset."""
         return obj["name"].rpartition("/")[-1]
 
     @GoogleBaseHook.fallback_to_default_project_id
@@ -70,13 +80,13 @@ class DatasetHook(GoogleBaseHook):
         self,
         project_id: str,
         region: str,
-        dataset: Union[Dataset, Dict],
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        dataset: Dataset | dict,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> Operation:
         """
-        Creates a Dataset.
+        Create a Dataset.
 
         :param project_id: Required. The ID of the Google Cloud project that the service belongs to.
         :param region: Required. The ID of the Google Cloud region that the service belongs to.
@@ -90,8 +100,8 @@ class DatasetHook(GoogleBaseHook):
 
         result = client.create_dataset(
             request={
-                'parent': parent,
-                'dataset': dataset,
+                "parent": parent,
+                "dataset": dataset,
             },
             retry=retry,
             timeout=timeout,
@@ -105,12 +115,12 @@ class DatasetHook(GoogleBaseHook):
         project_id: str,
         region: str,
         dataset: str,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> Operation:
         """
-        Deletes a Dataset.
+        Delete a Dataset.
 
         :param project_id: Required. The ID of the Google Cloud project that the service belongs to.
         :param region: Required. The ID of the Google Cloud region that the service belongs to.
@@ -124,7 +134,7 @@ class DatasetHook(GoogleBaseHook):
 
         result = client.delete_dataset(
             request={
-                'name': name,
+                "name": name,
             },
             retry=retry,
             timeout=timeout,
@@ -138,13 +148,13 @@ class DatasetHook(GoogleBaseHook):
         project_id: str,
         region: str,
         dataset: str,
-        export_config: Union[ExportDataConfig, Dict],
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        export_config: ExportDataConfig | dict,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> Operation:
         """
-        Exports data from a Dataset.
+        Export data from a Dataset.
 
         :param project_id: Required. The ID of the Google Cloud project that the service belongs to.
         :param region: Required. The ID of the Google Cloud region that the service belongs to.
@@ -159,8 +169,8 @@ class DatasetHook(GoogleBaseHook):
 
         result = client.export_data(
             request={
-                'name': name,
-                'export_config': export_config,
+                "name": name,
+                "export_config": export_config,
             },
             retry=retry,
             timeout=timeout,
@@ -175,13 +185,13 @@ class DatasetHook(GoogleBaseHook):
         region: str,
         dataset: str,
         annotation_spec: str,
-        read_mask: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        read_mask: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> AnnotationSpec:
         """
-        Gets an AnnotationSpec.
+        Get an AnnotationSpec.
 
         :param project_id: Required. The ID of the Google Cloud project that the service belongs to.
         :param region: Required. The ID of the Google Cloud region that the service belongs to.
@@ -197,8 +207,8 @@ class DatasetHook(GoogleBaseHook):
 
         result = client.get_annotation_spec(
             request={
-                'name': name,
-                'read_mask': read_mask,
+                "name": name,
+                "read_mask": read_mask,
             },
             retry=retry,
             timeout=timeout,
@@ -212,13 +222,13 @@ class DatasetHook(GoogleBaseHook):
         project_id: str,
         region: str,
         dataset: str,
-        read_mask: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        read_mask: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> Dataset:
         """
-        Gets a Dataset.
+        Get a Dataset.
 
         :param project_id: Required. The ID of the Google Cloud project that the service belongs to.
         :param region: Required. The ID of the Google Cloud region that the service belongs to.
@@ -233,8 +243,8 @@ class DatasetHook(GoogleBaseHook):
 
         result = client.get_dataset(
             request={
-                'name': name,
-                'read_mask': read_mask,
+                "name": name,
+                "read_mask": read_mask,
             },
             retry=retry,
             timeout=timeout,
@@ -249,12 +259,12 @@ class DatasetHook(GoogleBaseHook):
         region: str,
         dataset: str,
         import_configs: Sequence[ImportDataConfig],
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> Operation:
         """
-        Imports data into a Dataset.
+        Import data into a Dataset.
 
         :param project_id: Required. The ID of the Google Cloud project that the service belongs to.
         :param region: Required. The ID of the Google Cloud region that the service belongs to.
@@ -270,8 +280,8 @@ class DatasetHook(GoogleBaseHook):
 
         result = client.import_data(
             request={
-                'name': name,
-                'import_configs': import_configs,
+                "name": name,
+                "import_configs": import_configs,
             },
             retry=retry,
             timeout=timeout,
@@ -286,17 +296,17 @@ class DatasetHook(GoogleBaseHook):
         region: str,
         dataset: str,
         data_item: str,
-        filter: Optional[str] = None,
-        page_size: Optional[int] = None,
-        page_token: Optional[str] = None,
-        read_mask: Optional[str] = None,
-        order_by: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        filter: str | None = None,
+        page_size: int | None = None,
+        page_token: str | None = None,
+        read_mask: str | None = None,
+        order_by: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> ListAnnotationsPager:
         """
-        Lists Annotations belongs to a data item
+        List Annotations belongs to a data item.
 
         :param project_id: Required. The ID of the Google Cloud project that the service belongs to.
         :param region: Required. The ID of the Google Cloud region that the service belongs to.
@@ -317,12 +327,12 @@ class DatasetHook(GoogleBaseHook):
 
         result = client.list_annotations(
             request={
-                'parent': parent,
-                'filter': filter,
-                'page_size': page_size,
-                'page_token': page_token,
-                'read_mask': read_mask,
-                'order_by': order_by,
+                "parent": parent,
+                "filter": filter,
+                "page_size": page_size,
+                "page_token": page_token,
+                "read_mask": read_mask,
+                "order_by": order_by,
             },
             retry=retry,
             timeout=timeout,
@@ -336,17 +346,17 @@ class DatasetHook(GoogleBaseHook):
         project_id: str,
         region: str,
         dataset: str,
-        filter: Optional[str] = None,
-        page_size: Optional[int] = None,
-        page_token: Optional[str] = None,
-        read_mask: Optional[str] = None,
-        order_by: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        filter: str | None = None,
+        page_size: int | None = None,
+        page_token: str | None = None,
+        read_mask: str | None = None,
+        order_by: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> ListDataItemsPager:
         """
-        Lists DataItems in a Dataset.
+        List DataItems in a Dataset.
 
         :param project_id: Required. The ID of the Google Cloud project that the service belongs to.
         :param region: Required. The ID of the Google Cloud region that the service belongs to.
@@ -366,12 +376,12 @@ class DatasetHook(GoogleBaseHook):
 
         result = client.list_data_items(
             request={
-                'parent': parent,
-                'filter': filter,
-                'page_size': page_size,
-                'page_token': page_token,
-                'read_mask': read_mask,
-                'order_by': order_by,
+                "parent": parent,
+                "filter": filter,
+                "page_size": page_size,
+                "page_token": page_token,
+                "read_mask": read_mask,
+                "order_by": order_by,
             },
             retry=retry,
             timeout=timeout,
@@ -384,17 +394,17 @@ class DatasetHook(GoogleBaseHook):
         self,
         project_id: str,
         region: str,
-        filter: Optional[str] = None,
-        page_size: Optional[int] = None,
-        page_token: Optional[str] = None,
-        read_mask: Optional[str] = None,
-        order_by: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        filter: str | None = None,
+        page_size: int | None = None,
+        page_token: str | None = None,
+        read_mask: str | None = None,
+        order_by: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> ListDatasetsPager:
         """
-        Lists Datasets in a Location.
+        List Datasets in a Location.
 
         :param project_id: Required. The ID of the Google Cloud project that the service belongs to.
         :param region: Required. The ID of the Google Cloud region that the service belongs to.
@@ -413,12 +423,12 @@ class DatasetHook(GoogleBaseHook):
 
         result = client.list_datasets(
             request={
-                'parent': parent,
-                'filter': filter,
-                'page_size': page_size,
-                'page_token': page_token,
-                'read_mask': read_mask,
-                'order_by': order_by,
+                "parent": parent,
+                "filter": filter,
+                "page_size": page_size,
+                "page_token": page_token,
+                "read_mask": read_mask,
+                "order_by": order_by,
             },
             retry=retry,
             timeout=timeout,
@@ -431,14 +441,14 @@ class DatasetHook(GoogleBaseHook):
         project_id: str,
         region: str,
         dataset_id: str,
-        dataset: Union[Dataset, Dict],
-        update_mask: Union[FieldMask, Dict],
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        dataset: Dataset | dict,
+        update_mask: FieldMask | dict,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> Dataset:
         """
-        Updates a Dataset.
+        Update a Dataset.
 
         :param project_id: Required. The ID of the Google Cloud project that the service belongs to.
         :param region: Required. The ID of the Google Cloud region that the service belongs to.
@@ -454,8 +464,8 @@ class DatasetHook(GoogleBaseHook):
 
         result = client.update_dataset(
             request={
-                'dataset': dataset,
-                'update_mask': update_mask,
+                "dataset": dataset,
+                "update_mask": update_mask,
             },
             retry=retry,
             timeout=timeout,

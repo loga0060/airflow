@@ -15,14 +15,15 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-
 """Connect to Asana."""
-from typing import Any, Dict, Optional
+from __future__ import annotations
+
+from functools import cached_property
+from typing import Any
 
 from asana import Client  # type: ignore[attr-defined]
 from asana.error import NotFoundError  # type: ignore[attr-defined]
 
-from airflow.compat.functools import cached_property
 from airflow.hooks.base import BaseHook
 
 
@@ -38,40 +39,53 @@ class AsanaHook(BaseHook):
         super().__init__(*args, **kwargs)
         self.connection = self.get_connection(conn_id)
         extras = self.connection.extra_dejson
-        self.workspace = extras.get("extra__asana__workspace") or None
-        self.project = extras.get("extra__asana__project") or None
+        self.workspace = self._get_field(extras, "workspace") or None
+        self.project = self._get_field(extras, "project") or None
+
+    def _get_field(self, extras: dict, field_name: str):
+        """Get field from extra, first checking short name, then for backcompat we check for prefixed name."""
+        backcompat_prefix = "extra__asana__"
+        if field_name.startswith("extra__"):
+            raise ValueError(
+                f"Got prefixed name {field_name}; please remove the '{backcompat_prefix}' prefix "
+                "when using this method."
+            )
+        if field_name in extras:
+            return extras[field_name] or None
+        prefixed_name = f"{backcompat_prefix}{field_name}"
+        return extras.get(prefixed_name) or None
 
     def get_conn(self) -> Client:
         return self.client
 
-    @staticmethod
-    def get_connection_form_widgets() -> Dict[str, Any]:
-        """Returns connection widgets to add to connection form"""
+    @classmethod
+    def get_connection_form_widgets(cls) -> dict[str, Any]:
+        """Return connection widgets to add to connection form."""
         from flask_appbuilder.fieldwidgets import BS3TextFieldWidget
         from flask_babel import lazy_gettext
         from wtforms import StringField
 
         return {
-            "extra__asana__workspace": StringField(lazy_gettext("Workspace"), widget=BS3TextFieldWidget()),
-            "extra__asana__project": StringField(lazy_gettext("Project"), widget=BS3TextFieldWidget()),
+            "workspace": StringField(lazy_gettext("Workspace"), widget=BS3TextFieldWidget()),
+            "project": StringField(lazy_gettext("Project"), widget=BS3TextFieldWidget()),
         }
 
-    @staticmethod
-    def get_ui_field_behaviour() -> Dict[str, Any]:
-        """Returns custom field behaviour"""
+    @classmethod
+    def get_ui_field_behaviour(cls) -> dict[str, Any]:
+        """Return custom field behaviour."""
         return {
             "hidden_fields": ["port", "host", "login", "schema"],
             "relabeling": {},
             "placeholders": {
                 "password": "Asana personal access token",
-                "extra__asana__workspace": "Asana workspace gid",
-                "extra__asana__project": "Asana project gid",
+                "workspace": "Asana workspace gid",
+                "project": "Asana project gid",
             },
         }
 
     @cached_property
     def client(self) -> Client:
-        """Instantiates python-asana Client"""
+        """Instantiate python-asana Client."""
         if not self.connection.password:
             raise ValueError(
                 "Asana connection password must contain a personal access token: "
@@ -80,9 +94,9 @@ class AsanaHook(BaseHook):
 
         return Client.access_token(self.connection.password)
 
-    def create_task(self, task_name: str, params: Optional[dict]) -> dict:
+    def create_task(self, task_name: str, params: dict | None) -> dict:
         """
-        Creates an Asana task.
+        Create an Asana task.
 
         :param task_name: Name of the new task
         :param params: Other task attributes, such as due_on, parent, and notes. For a complete list
@@ -94,7 +108,7 @@ class AsanaHook(BaseHook):
         response = self.client.tasks.create(params=merged_params)
         return response
 
-    def _merge_create_task_parameters(self, task_name: str, task_params: Optional[dict]) -> dict:
+    def _merge_create_task_parameters(self, task_name: str, task_params: dict | None) -> dict:
         """
         Merge create_task parameters with default params from the connection.
 
@@ -102,7 +116,7 @@ class AsanaHook(BaseHook):
         :param task_params: Other task parameters which should override defaults from the connection
         :return: A dict of merged parameters to use in the new task
         """
-        merged_params: Dict[str, Any] = {"name": task_name}
+        merged_params: dict[str, Any] = {"name": task_name}
         if self.project:
             merged_params["projects"] = [self.project]
         # Only use default workspace if user did not provide a project id
@@ -128,7 +142,7 @@ class AsanaHook(BaseHook):
 
     def delete_task(self, task_id: str) -> dict:
         """
-        Deletes an Asana task.
+        Delete an Asana task.
 
         :param task_id: Asana GID of the task to delete
         :return: A dict containing the response from Asana
@@ -140,9 +154,9 @@ class AsanaHook(BaseHook):
             self.log.info("Asana task %s not found for deletion.", task_id)
             return {}
 
-    def find_task(self, params: Optional[dict]) -> list:
+    def find_task(self, params: dict | None) -> list:
         """
-        Retrieves a list of Asana tasks that match search parameters.
+        Retrieve a list of Asana tasks that match search parameters.
 
         :param params: Attributes that matching tasks should have. For a list of possible parameters,
             see https://developers.asana.com/docs/get-multiple-tasks
@@ -153,7 +167,7 @@ class AsanaHook(BaseHook):
         response = self.client.tasks.find_all(params=merged_params)
         return list(response)
 
-    def _merge_find_task_parameters(self, search_parameters: Optional[dict]) -> dict:
+    def _merge_find_task_parameters(self, search_parameters: dict | None) -> dict:
         """
         Merge find_task parameters with default params from the connection.
 
@@ -191,7 +205,7 @@ class AsanaHook(BaseHook):
 
     def update_task(self, task_id: str, params: dict) -> dict:
         """
-        Updates an existing Asana task.
+        Update an existing Asana task.
 
         :param task_id: Asana GID of task to update
         :param params: New values of the task's attributes. For a list of possible parameters, see
@@ -203,7 +217,7 @@ class AsanaHook(BaseHook):
 
     def create_project(self, params: dict) -> dict:
         """
-        Creates a new project.
+        Create a new project.
 
         :param params: Attributes that the new project should have. See
             https://developers.asana.com/docs/create-a-project#create-a-project-parameters
@@ -218,7 +232,7 @@ class AsanaHook(BaseHook):
     @staticmethod
     def _validate_create_project_parameters(params: dict) -> None:
         """
-        Check that user provided the minimum required parameters for project creation
+        Check that user provided the minimum required parameters for project creation.
 
         :param params: Attributes that the new project should have
         :return: None; raises a ValueError if `params` does not contain the minimum required attributes.
@@ -243,7 +257,7 @@ class AsanaHook(BaseHook):
 
     def find_project(self, params: dict) -> list:
         """
-        Retrieves a list of Asana projects that match search parameters.
+        Retrieve a list of Asana projects that match search parameters.
 
         :param params: Attributes which matching projects should have. See
             https://developers.asana.com/docs/get-multiple-projects
@@ -256,7 +270,7 @@ class AsanaHook(BaseHook):
 
     def update_project(self, project_id: str, params: dict) -> dict:
         """
-        Updates an existing project.
+        Update an existing project.
 
         :param project_id: Asana GID of the project to update
         :param params: New attributes that the project should have. See
@@ -269,7 +283,7 @@ class AsanaHook(BaseHook):
 
     def delete_project(self, project_id: str) -> dict:
         """
-        Deletes a project.
+        Delete a project.
 
         :param project_id: Asana GID of the project to delete
         :return: A dict containing the response from Asana

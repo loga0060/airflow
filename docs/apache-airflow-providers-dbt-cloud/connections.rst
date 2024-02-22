@@ -15,6 +15,9 @@
     specific language governing permissions and limitations
     under the License.
 
+.. spelling:word-list::
+
+    getdbt
 
 
 .. _howto/connection:dbt-cloud:
@@ -24,7 +27,7 @@ Connecting to dbt Cloud
 
 After installing the dbt Cloud provider in your Airflow environment, the corresponding connection type of
 ``dbt_cloud`` will be made available. The following describes how to configure an API token and optionally
-provide an Account ID for your dbt Cloud connection.
+provide an Account ID and/or a Tenant name for your dbt Cloud connection.
 
 Default Connection ID
 ~~~~~~~~~~~~~~~~~~~~~
@@ -65,6 +68,15 @@ Login (optional)
       If an Account ID is not provided in an Airflow connection, ``account_id`` *must* be explicitly passed to
       an operator or hook method.
 
+Host (optional)
+    The Tenant domain for your dbt Cloud environment (e.g. "my-tenant.getdbt.com"). This is particularly
+    useful when using a single-tenant dbt Cloud instance or `other dbt Cloud regions <https://docs.getdbt.com/docs/deploy/regions-ip-addresses>`__
+    like EMEA or a Virtual Private dbt Cloud. If a Tenant domain is not provided, "cloud.getdbt.com" will be
+    used as the default value assuming a multi-tenant instance in the North America region.
+
+    If using the Connection form in the Airflow UI, the Tenant domain can also be stored in the "Tenant"
+    field.
+
 When specifying the connection as an environment variable, you should specify it following the standard syntax
 of a database connection. Note that all components of the URI should be URL-encoded.
 
@@ -83,6 +95,12 @@ For example, to add a connection with the connection ID of "dbt_cloud_default":
 
         export AIRFLOW_CONN_DBT_CLOUD_DEFAULT='dbt-cloud://:api_token@'
 
+    When specifying a Tenant domain:
+
+    .. code-block:: bash
+
+        export AIRFLOW_CONN_DBT_CLOUD_DEFAULT='dbt-cloud://:api_token@my-tenant.getdbt.com'
+
 You can refer to the documentation on
-:ref:`creating connections via environment variables <environment_variables_secrets_backend>` for more
+:ref:`creating connections via environment variables <environment_variables_connections>` for more
 information.

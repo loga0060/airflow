@@ -33,8 +33,11 @@ while true; do
   find "${DIRECTORY}"/logs \
     -type d -name 'lost+found' -prune -o \
     -type f -mtime +"${RETENTION}" -name '*.log' -print0 | \
-    xargs -0 rm -f
+    xargs -0 rm -f || true
+
+  find "${DIRECTORY}"/logs -type d -empty -delete || true
 
   seconds=$(( $(date -u +%s) % EVERY))
-  (( seconds < 1 )) || sleep $((EVERY - seconds))
+  (( seconds < 1 )) || sleep $((EVERY - seconds - 1))
+  sleep 1
 done

@@ -14,20 +14,30 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
+
 import ast
 import os
-from typing import Optional
+from typing import TYPE_CHECKING
 
 import pytest
 
-from airflow import DAG
 from airflow.models import DagBag
 from airflow.security import permissions
 from tests.test_utils.api_connexion_utils import assert_401, create_user, delete_user
 from tests.test_utils.db import clear_db_dag_code, clear_db_dags, clear_db_serialized_dags
 
+pytestmark = pytest.mark.db_test
+
+if TYPE_CHECKING:
+    from airflow.models.dag import DAG
+
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
 EXAMPLE_DAG_FILE = os.path.join("airflow", "example_dags", "example_bash_operator.py")
+EXAMPLE_DAG_ID = "example_bash_operator"
+TEST_DAG_ID = "latest_only"
+NOT_READABLE_DAG_ID = "latest_only_with_trigger"
+TEST_MULTIPLE_DAGS_ID = "dataset_produces_1"
 
 
 @pytest.fixture(scope="module")
@@ -38,6 +48,18 @@ def configured_app(minimal_app_for_api):
         username="test",
         role_name="Test",
         permissions=[(permissions.ACTION_CAN_READ, permissions.RESOURCE_DAG_CODE)],  # type: ignore
+    )
+    app.appbuilder.sm.sync_perm_for_dag(  # type: ignore
+        TEST_DAG_ID,
+        access_control={"Test": [permissions.ACTION_CAN_READ]},
+    )
+    app.appbuilder.sm.sync_perm_for_dag(  # type: ignore
+        EXAMPLE_DAG_ID,
+        access_control={"Test": [permissions.ACTION_CAN_READ]},
+    )
+    app.appbuilder.sm.sync_perm_for_dag(  # type: ignore
+        TEST_MULTIPLE_DAGS_ID,
+        access_control={"Test": [permissions.ACTION_CAN_READ]},
     )
     create_user(app, username="test_no_permissions", role_name="TestNoPermissions")  # type: ignore
 
@@ -64,7 +86,7 @@ class TestGetSource:
         clear_db_dag_code()
 
     @staticmethod
-    def _get_dag_file_docstring(fileloc: str) -> Optional[str]:
+    def _get_dag_file_docstring(fileloc: str) -> str | None:
         with open(fileloc) as f:
             file_contents = f.read()
         module = ast.parse(file_contents)
@@ -72,44 +94,43 @@ class TestGetSource:
         return docstring
 
     def test_should_respond_200_text(self, url_safe_serializer):
-
         dagbag = DagBag(dag_folder=EXAMPLE_DAG_FILE)
         dagbag.sync_to_db()
-        first_dag: DAG = next(iter(dagbag.dags.values()))
-        dag_docstring = self._get_dag_file_docstring(first_dag.fileloc)
+        test_dag: DAG = dagbag.dags[TEST_DAG_ID]
+        dag_docstring = self._get_dag_file_docstring(test_dag.fileloc)
 
-        url = f"/api/v1/dagSources/{url_safe_serializer.dumps(first_dag.fileloc)}"
+        url = f"/api/v1/dagSources/{url_safe_serializer.dumps(test_dag.fileloc)}"
         response = self.client.get(
-            url, headers={"Accept": "text/plain"}, environ_overrides={'REMOTE_USER': "test"}
+            url, headers={"Accept": "text/plain"}, environ_overrides={"REMOTE_USER": "test"}
         )
 
         assert 200 == response.status_code
         assert dag_docstring in response.data.decode()
-        assert 'text/plain' == response.headers['Content-Type']
+        assert "text/plain" == response.headers["Content-Type"]
 
     def test_should_respond_200_json(self, url_safe_serializer):
         dagbag = DagBag(dag_folder=EXAMPLE_DAG_FILE)
         dagbag.sync_to_db()
-        first_dag: DAG = next(iter(dagbag.dags.values()))
-        dag_docstring = self._get_dag_file_docstring(first_dag.fileloc)
+        test_dag: DAG = dagbag.dags[TEST_DAG_ID]
+        dag_docstring = self._get_dag_file_docstring(test_dag.fileloc)
 
-        url = f"/api/v1/dagSources/{url_safe_serializer.dumps(first_dag.fileloc)}"
+        url = f"/api/v1/dagSources/{url_safe_serializer.dumps(test_dag.fileloc)}"
         response = self.client.get(
-            url, headers={"Accept": 'application/json'}, environ_overrides={'REMOTE_USER': "test"}
+            url, headers={"Accept": "application/json"}, environ_overrides={"REMOTE_USER": "test"}
         )
 
         assert 200 == response.status_code
-        assert dag_docstring in response.json['content']
-        assert 'application/json' == response.headers['Content-Type']
+        assert dag_docstring in response.json["content"]
+        assert "application/json" == response.headers["Content-Type"]
 
     def test_should_respond_406(self, url_safe_serializer):
         dagbag = DagBag(dag_folder=EXAMPLE_DAG_FILE)
         dagbag.sync_to_db()
-        first_dag: DAG = next(iter(dagbag.dags.values()))
+        test_dag: DAG = dagbag.dags[TEST_DAG_ID]
 
-        url = f"/api/v1/dagSources/{url_safe_serializer.dumps(first_dag.fileloc)}"
+        url = f"/api/v1/dagSources/{url_safe_serializer.dumps(test_dag.fileloc)}"
         response = self.client.get(
-            url, headers={"Accept": 'image/webp'}, environ_overrides={'REMOTE_USER': "test"}
+            url, headers={"Accept": "image/webp"}, environ_overrides={"REMOTE_USER": "test"}
         )
 
         assert 406 == response.status_code
@@ -118,7 +139,7 @@ class TestGetSource:
         wrong_fileloc = "abcd1234"
         url = f"/api/v1/dagSources/{wrong_fileloc}"
         response = self.client.get(
-            url, headers={"Accept": 'application/json'}, environ_overrides={'REMOTE_USER': "test"}
+            url, headers={"Accept": "application/json"}, environ_overrides={"REMOTE_USER": "test"}
         )
 
         assert 404 == response.status_code
@@ -143,6 +164,41 @@ class TestGetSource:
         response = self.client.get(
             f"/api/v1/dagSources/{url_safe_serializer.dumps(first_dag.fileloc)}",
             headers={"Accept": "text/plain"},
-            environ_overrides={'REMOTE_USER': "test_no_permissions"},
+            environ_overrides={"REMOTE_USER": "test_no_permissions"},
         )
         assert response.status_code == 403
+
+    def test_should_respond_403_not_readable(self, url_safe_serializer):
+        dagbag = DagBag(dag_folder=EXAMPLE_DAG_FILE)
+        dagbag.sync_to_db()
+        dag: DAG = dagbag.dags[NOT_READABLE_DAG_ID]
+
+        response = self.client.get(
+            f"/api/v1/dagSources/{url_safe_serializer.dumps(dag.fileloc)}",
+            headers={"Accept": "text/plain"},
+            environ_overrides={"REMOTE_USER": "test"},
+        )
+        read_dag = self.client.get(
+            f"/api/v1/dags/{NOT_READABLE_DAG_ID}",
+            environ_overrides={"REMOTE_USER": "test"},
+        )
+        assert response.status_code == 403
+        assert read_dag.status_code == 403
+
+    def test_should_respond_403_some_dags_not_readable_in_the_file(self, url_safe_serializer):
+        dagbag = DagBag(dag_folder=EXAMPLE_DAG_FILE)
+        dagbag.sync_to_db()
+        dag: DAG = dagbag.dags[TEST_MULTIPLE_DAGS_ID]
+
+        response = self.client.get(
+            f"/api/v1/dagSources/{url_safe_serializer.dumps(dag.fileloc)}",
+            headers={"Accept": "text/plain"},
+            environ_overrides={"REMOTE_USER": "test"},
+        )
+
+        read_dag = self.client.get(
+            f"/api/v1/dags/{TEST_MULTIPLE_DAGS_ID}",
+            environ_overrides={"REMOTE_USER": "test"},
+        )
+        assert response.status_code == 403
+        assert read_dag.status_code == 200

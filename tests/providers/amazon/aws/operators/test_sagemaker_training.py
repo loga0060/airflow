@@ -14,140 +14,224 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
 
-import unittest
+from datetime import datetime
 from unittest import mock
 
 import pytest
+from botocore.exceptions import ClientError
+from openlineage.client.run import Dataset
 
-from airflow.exceptions import AirflowException
-from airflow.providers.amazon.aws.hooks.sagemaker import SageMakerHook
-from airflow.providers.amazon.aws.operators.sagemaker import SageMakerTrainingOperator
+from airflow.exceptions import AirflowException, TaskDeferred
+from airflow.providers.amazon.aws.hooks.sagemaker import LogState, SageMakerHook
+from airflow.providers.amazon.aws.operators import sagemaker
+from airflow.providers.amazon.aws.operators.sagemaker import SageMakerBaseOperator, SageMakerTrainingOperator
+from airflow.providers.amazon.aws.triggers.sagemaker import (
+    SageMakerTrigger,
+)
+from airflow.providers.openlineage.extractors import OperatorLineage
 
-role = 'arn:aws:iam:role/test-role'
+EXPECTED_INTEGER_FIELDS: list[list[str]] = [
+    ["ResourceConfig", "InstanceCount"],
+    ["ResourceConfig", "VolumeSizeInGB"],
+    ["StoppingCondition", "MaxRuntimeInSeconds"],
+]
 
-bucket = 'test-bucket'
-
-key = 'test/data'
-data_url = f's3://{bucket}/{key}'
-
-job_name = 'test-job-name'
-
-image = 'test-image'
-
-output_url = f's3://{bucket}/test/output'
-create_training_params = {
-    'AlgorithmSpecification': {'TrainingImage': image, 'TrainingInputMode': 'File'},
-    'RoleArn': role,
-    'OutputDataConfig': {'S3OutputPath': output_url},
-    'ResourceConfig': {'InstanceCount': '2', 'InstanceType': 'ml.c4.8xlarge', 'VolumeSizeInGB': '50'},
-    'TrainingJobName': job_name,
-    'HyperParameters': {'k': '10', 'feature_dim': '784', 'mini_batch_size': '500', 'force_dense': 'True'},
-    'StoppingCondition': {'MaxRuntimeInSeconds': '3600'},
-    'InputDataConfig': [
+CREATE_TRAINING_PARAMS = {
+    "AlgorithmSpecification": {"TrainingImage": "image_name", "TrainingInputMode": "File"},
+    "RoleArn": "arn:aws:iam:role/test-role",
+    "OutputDataConfig": {"S3OutputPath": "output_path"},
+    "ResourceConfig": {"InstanceCount": "2", "InstanceType": "ml.c4.8xlarge", "VolumeSizeInGB": "50"},
+    "TrainingJobName": "job_name",
+    "HyperParameters": {"k": "10", "feature_dim": "784", "mini_batch_size": "500", "force_dense": "True"},
+    "StoppingCondition": {"MaxRuntimeInSeconds": "3600"},
+    "InputDataConfig": [
         {
-            'ChannelName': 'train',
-            'DataSource': {
-                'S3DataSource': {
-                    'S3DataType': 'S3Prefix',
-                    'S3Uri': data_url,
-                    'S3DataDistributionType': 'FullyReplicated',
+            "ChannelName": "train",
+            "DataSource": {
+                "S3DataSource": {
+                    "S3DataType": "S3Prefix",
+                    "S3Uri": "s3_uri",
+                    "S3DataDistributionType": "FullyReplicated",
                 }
             },
-            'CompressionType': 'None',
-            'RecordWrapperType': 'None',
+            "CompressionType": "None",
+            "RecordWrapperType": "None",
         }
     ],
 }
 
 
-class TestSageMakerTrainingOperator(unittest.TestCase):
-    def setUp(self):
+class TestSageMakerTrainingOperator:
+    def setup_method(self):
         self.sagemaker = SageMakerTrainingOperator(
-            task_id='test_sagemaker_operator',
-            aws_conn_id='sagemaker_test_id',
-            config=create_training_params,
+            task_id="test_sagemaker_operator",
+            config=CREATE_TRAINING_PARAMS.copy(),
             wait_for_completion=False,
             check_interval=5,
         )
 
-    def test_parse_config_integers(self):
-        self.sagemaker.parse_config_integers()
-        assert self.sagemaker.config['ResourceConfig']['InstanceCount'] == int(
-            self.sagemaker.config['ResourceConfig']['InstanceCount']
-        )
-        assert self.sagemaker.config['ResourceConfig']['VolumeSizeInGB'] == int(
-            self.sagemaker.config['ResourceConfig']['VolumeSizeInGB']
-        )
-        assert self.sagemaker.config['StoppingCondition']['MaxRuntimeInSeconds'] == int(
-            self.sagemaker.config['StoppingCondition']['MaxRuntimeInSeconds']
-        )
-
-    @mock.patch.object(SageMakerHook, 'get_conn')
-    @mock.patch.object(SageMakerHook, 'create_training_job')
-    def test_execute_with_check_if_job_exists(self, mock_training, mock_client):
+    @mock.patch.object(SageMakerHook, "describe_training_job")
+    @mock.patch.object(SageMakerHook, "create_training_job")
+    @mock.patch.object(sagemaker, "serialize", return_value="")
+    def test_integer_fields(self, _, mock_training, mock_desc):
+        mock_desc.side_effect = [ClientError({"Error": {"Code": "ValidationException"}}, "op"), None]
         mock_training.return_value = {
-            'TrainingJobArn': 'testarn',
-            'ResponseMetadata': {'HTTPStatusCode': 200},
+            "TrainingJobArn": "test_arn",
+            "ResponseMetadata": {"HTTPStatusCode": 200},
         }
-        self.sagemaker._check_if_job_exists = mock.MagicMock()
         self.sagemaker.execute(None)
-        self.sagemaker._check_if_job_exists.assert_called_once()
-        mock_training.assert_called_once_with(
-            create_training_params,
-            wait_for_completion=False,
-            print_log=True,
-            check_interval=5,
-            max_ingestion_time=None,
-        )
+        assert self.sagemaker.integer_fields == EXPECTED_INTEGER_FIELDS
+        for key1, key2 in EXPECTED_INTEGER_FIELDS:
+            assert self.sagemaker.config[key1][key2] == int(self.sagemaker.config[key1][key2])
 
-    @mock.patch.object(SageMakerHook, 'get_conn')
-    @mock.patch.object(SageMakerHook, 'create_training_job')
-    def test_execute_without_check_if_job_exists(self, mock_training, mock_client):
+    @mock.patch.object(SageMakerHook, "describe_training_job")
+    @mock.patch.object(SageMakerHook, "create_training_job")
+    @mock.patch.object(sagemaker, "serialize", return_value="")
+    def test_execute_without_check_if_job_exists(self, _, mock_training, mock_desc):
         mock_training.return_value = {
-            'TrainingJobArn': 'testarn',
-            'ResponseMetadata': {'HTTPStatusCode': 200},
+            "TrainingJobArn": "test_arn",
+            "ResponseMetadata": {"HTTPStatusCode": 200},
         }
         self.sagemaker.check_if_job_exists = False
         self.sagemaker._check_if_job_exists = mock.MagicMock()
         self.sagemaker.execute(None)
         self.sagemaker._check_if_job_exists.assert_not_called()
         mock_training.assert_called_once_with(
-            create_training_params,
+            CREATE_TRAINING_PARAMS,
             wait_for_completion=False,
             print_log=True,
             check_interval=5,
             max_ingestion_time=None,
         )
 
-    @mock.patch.object(SageMakerHook, 'get_conn')
-    @mock.patch.object(SageMakerHook, 'create_training_job')
-    def test_execute_with_failure(self, mock_training, mock_client):
+        a = []
+        a.sort()
+
+    @mock.patch.object(SageMakerHook, "describe_training_job")
+    @mock.patch.object(SageMakerHook, "create_training_job")
+    def test_execute_with_failure(self, mock_training, mock_desc):
+        mock_desc.side_effect = [ClientError({"Error": {"Code": "ValidationException"}}, "op")]
         mock_training.return_value = {
-            'TrainingJobArn': 'testarn',
-            'ResponseMetadata': {'HTTPStatusCode': 404},
+            "TrainingJobArn": "test_arn",
+            "ResponseMetadata": {"HTTPStatusCode": 404},
         }
         with pytest.raises(AirflowException):
             self.sagemaker.execute(None)
 
-    @mock.patch.object(SageMakerHook, "get_conn")
-    @mock.patch.object(SageMakerHook, "list_training_jobs")
-    def test_check_if_job_exists_increment(self, mock_list_training_jobs, mock_client):
-        self.sagemaker.check_if_job_exists = True
-        self.sagemaker.action_if_job_exists = "increment"
-        mock_list_training_jobs.return_value = [{"TrainingJobName": job_name}]
-        self.sagemaker._check_if_job_exists()
+    @mock.patch("airflow.providers.amazon.aws.operators.sagemaker.SageMakerTrainingOperator.defer")
+    @mock.patch.object(
+        SageMakerHook,
+        "describe_training_job_with_log",
+        return_value=(
+            LogState.JOB_COMPLETE,
+            {
+                "TrainingJobStatus": "Completed",
+                "ResourceConfig": {"InstanceCount": 1},
+                "TrainingEndTime": datetime(2023, 5, 15),
+                "TrainingStartTime": datetime(2023, 5, 16),
+            },
+            50,
+        ),
+    )
+    @mock.patch.object(
+        SageMakerHook,
+        "describe_training_job",
+        return_value={
+            "TrainingJobStatus": "Completed",
+            "ResourceConfig": {"InstanceCount": 1},
+            "TrainingEndTime": datetime(2023, 5, 15),
+            "TrainingStartTime": datetime(2023, 5, 16),
+        },
+    )
+    @mock.patch.object(SageMakerHook, "create_training_job")
+    def test_operator_complete_before_defer(
+        self,
+        mock_training,
+        mock_describe_training_job,
+        mock_describe_training_job_with_log,
+        mock_defer,
+    ):
+        mock_training.return_value = {
+            "TrainingJobArn": "test_arn",
+            "ResponseMetadata": {"HTTPStatusCode": 200},
+        }
+        self.sagemaker.deferrable = True
+        self.sagemaker.wait_for_completion = True
+        self.sagemaker.check_if_job_exists = False
 
-        expected_config = create_training_params.copy()
-        # Expect to see TrainingJobName suffixed with "-2" because we return one existing job
-        expected_config["TrainingJobName"] = f"{job_name}-2"
-        assert self.sagemaker.config == expected_config
+        self.sagemaker.execute(context=None)
+        assert not mock_defer.called
 
-    @mock.patch.object(SageMakerHook, "get_conn")
-    @mock.patch.object(SageMakerHook, "list_training_jobs")
-    def test_check_if_job_exists_fail(self, mock_list_training_jobs, mock_client):
-        self.sagemaker.check_if_job_exists = True
-        self.sagemaker.action_if_job_exists = "fail"
-        mock_list_training_jobs.return_value = [{"TrainingJobName": job_name}]
-        with pytest.raises(AirflowException):
-            self.sagemaker._check_if_job_exists()
+    @mock.patch.object(
+        SageMakerHook,
+        "describe_training_job_with_log",
+        return_value=(
+            LogState.WAIT_IN_PROGRESS,
+            {
+                "TrainingJobStatus": "Training",
+                "ResourceConfig": {"InstanceCount": 1},
+                "TrainingEndTime": datetime(2023, 5, 15),
+                "TrainingStartTime": datetime(2023, 5, 16),
+            },
+            50,
+        ),
+    )
+    @mock.patch.object(
+        SageMakerHook,
+        "describe_training_job",
+        return_value={
+            "TrainingJobStatus": "Training",
+            "ResourceConfig": {"InstanceCount": 1},
+            "TrainingEndTime": datetime(2023, 5, 15),
+            "TrainingStartTime": datetime(2023, 5, 16),
+        },
+    )
+    @mock.patch.object(SageMakerHook, "create_training_job")
+    def test_operator_defer(
+        self,
+        mock_training,
+        mock_describe_training_job,
+        mock_describe_training_job_with_log,
+    ):
+        mock_training.return_value = {
+            "TrainingJobArn": "test_arn",
+            "ResponseMetadata": {"HTTPStatusCode": 200},
+        }
+        self.sagemaker.deferrable = True
+        self.sagemaker.wait_for_completion = True
+        self.sagemaker.check_if_job_exists = False
+        self.sagemaker.print_log = False
+
+        with pytest.raises(TaskDeferred) as exc:
+            self.sagemaker.execute(context=None)
+        assert isinstance(exc.value.trigger, SageMakerTrigger), "Trigger is not a SagemakerTrigger"
+
+    @mock.patch.object(
+        SageMakerHook,
+        "describe_training_job",
+        return_value={
+            "InputDataConfig": [
+                {
+                    "DataSource": {"S3DataSource": {"S3Uri": "s3://input-bucket/input-path"}},
+                }
+            ],
+            "ModelArtifacts": {"S3ModelArtifacts": "s3://model-bucket/model-path"},
+        },
+    )
+    @mock.patch.object(
+        SageMakerHook,
+        "create_training_job",
+        return_value={
+            "TrainingJobArn": "test_arn",
+            "ResponseMetadata": {"HTTPStatusCode": 200},
+        },
+    )
+    @mock.patch.object(SageMakerBaseOperator, "_check_if_job_exists", return_value=False)
+    def test_execute_openlineage_data(self, mock_exists, mock_training, mock_desc):
+        self.sagemaker.execute(None)
+        assert self.sagemaker.get_openlineage_facets_on_complete(None) == OperatorLineage(
+            inputs=[Dataset(namespace="s3://input-bucket", name="input-path")],
+            outputs=[Dataset(namespace="s3://model-bucket", name="model-path")],
+        )

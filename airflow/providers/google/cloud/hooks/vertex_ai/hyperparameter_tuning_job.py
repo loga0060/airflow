@@ -15,30 +15,33 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-#
-"""This module contains a Google Cloud Vertex AI hook.
-
-.. spelling::
-
-    irreproducible
-    codepoints
-    Tensorboard
-    aiplatform
-    myVPC
 """
+This module contains a Google Cloud Vertex AI hook.
 
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+.. spelling:word-list::
+
+    JobServiceAsyncClient
+"""
+from __future__ import annotations
+
+import asyncio
+from functools import lru_cache
+from typing import TYPE_CHECKING, Sequence
 
 from google.api_core.client_options import ClientOptions
 from google.api_core.gapic_v1.method import DEFAULT, _MethodDefault
-from google.api_core.operation import Operation
-from google.api_core.retry import Retry
 from google.cloud.aiplatform import CustomJob, HyperparameterTuningJob, gapic, hyperparameter_tuning
-from google.cloud.aiplatform_v1 import JobServiceClient, types
-from google.cloud.aiplatform_v1.services.job_service.pagers import ListHyperparameterTuningJobsPager
+from google.cloud.aiplatform_v1 import JobServiceAsyncClient, JobServiceClient, JobState, types
 
-from airflow import AirflowException
+from airflow.exceptions import AirflowException
+from airflow.providers.google.common.consts import CLIENT_INFO
 from airflow.providers.google.common.hooks.base_google import GoogleBaseHook
+
+if TYPE_CHECKING:
+    from google.api_core.operation import Operation
+    from google.api_core.retry import Retry
+    from google.api_core.retry_async import AsyncRetry
+    from google.cloud.aiplatform_v1.services.job_service.pagers import ListHyperparameterTuningJobsPager
 
 
 class HyperparameterTuningJobHook(GoogleBaseHook):
@@ -47,44 +50,48 @@ class HyperparameterTuningJobHook(GoogleBaseHook):
     def __init__(
         self,
         gcp_conn_id: str = "google_cloud_default",
-        delegate_to: Optional[str] = None,
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
+        impersonation_chain: str | Sequence[str] | None = None,
+        **kwargs,
     ) -> None:
+        if kwargs.get("delegate_to") is not None:
+            raise RuntimeError(
+                "The `delegate_to` parameter has been deprecated before and finally removed in this version"
+                " of Google Provider. You MUST convert it to `impersonate_chain`"
+            )
         super().__init__(
             gcp_conn_id=gcp_conn_id,
-            delegate_to=delegate_to,
             impersonation_chain=impersonation_chain,
         )
-        self._hyperparameter_tuning_job: Optional[HyperparameterTuningJob] = None
+        self._hyperparameter_tuning_job: HyperparameterTuningJob | None = None
 
-    def get_job_service_client(self, region: Optional[str] = None) -> JobServiceClient:
-        """Returns JobServiceClient."""
-        if region and region != 'global':
-            client_options = ClientOptions(api_endpoint=f'{region}-aiplatform.googleapis.com:443')
+    def get_job_service_client(self, region: str | None = None) -> JobServiceClient:
+        """Return JobServiceClient."""
+        if region and region != "global":
+            client_options = ClientOptions(api_endpoint=f"{region}-aiplatform.googleapis.com:443")
         else:
             client_options = ClientOptions()
 
         return JobServiceClient(
-            credentials=self._get_credentials(), client_info=self.client_info, client_options=client_options
+            credentials=self.get_credentials(), client_info=self.client_info, client_options=client_options
         )
 
     def get_hyperparameter_tuning_job_object(
         self,
         display_name: str,
         custom_job: CustomJob,
-        metric_spec: Dict[str, str],
-        parameter_spec: Dict[str, hyperparameter_tuning._ParameterSpec],
+        metric_spec: dict[str, str],
+        parameter_spec: dict[str, hyperparameter_tuning._ParameterSpec],
         max_trial_count: int,
         parallel_trial_count: int,
         max_failed_trial_count: int = 0,
-        search_algorithm: Optional[str] = None,
-        measurement_selection: Optional[str] = "best",
-        project: Optional[str] = None,
-        location: Optional[str] = None,
-        labels: Optional[Dict[str, str]] = None,
-        encryption_spec_key_name: Optional[str] = None,
+        search_algorithm: str | None = None,
+        measurement_selection: str | None = "best",
+        project: str | None = None,
+        location: str | None = None,
+        labels: dict[str, str] | None = None,
+        encryption_spec_key_name: str | None = None,
     ) -> HyperparameterTuningJob:
-        """Returns HyperparameterTuningJob object"""
+        """Return HyperparameterTuningJob object."""
         return HyperparameterTuningJob(
             display_name=display_name,
             custom_job=custom_job,
@@ -97,7 +104,7 @@ class HyperparameterTuningJobHook(GoogleBaseHook):
             measurement_selection=measurement_selection,
             project=project,
             location=location,
-            credentials=self._get_credentials(),
+            credentials=self.get_credentials(),
             labels=labels,
             encryption_spec_key_name=encryption_spec_key_name,
         )
@@ -105,34 +112,34 @@ class HyperparameterTuningJobHook(GoogleBaseHook):
     def get_custom_job_object(
         self,
         display_name: str,
-        worker_pool_specs: Union[List[Dict], List[gapic.WorkerPoolSpec]],
-        base_output_dir: Optional[str] = None,
-        project: Optional[str] = None,
-        location: Optional[str] = None,
-        labels: Optional[Dict[str, str]] = None,
-        encryption_spec_key_name: Optional[str] = None,
-        staging_bucket: Optional[str] = None,
+        worker_pool_specs: list[dict] | list[gapic.WorkerPoolSpec],
+        base_output_dir: str | None = None,
+        project: str | None = None,
+        location: str | None = None,
+        labels: dict[str, str] | None = None,
+        encryption_spec_key_name: str | None = None,
+        staging_bucket: str | None = None,
     ) -> CustomJob:
-        """Returns CustomJob object"""
+        """Return CustomJob object."""
         return CustomJob(
             display_name=display_name,
             worker_pool_specs=worker_pool_specs,
             base_output_dir=base_output_dir,
             project=project,
             location=location,
-            credentials=self._get_credentials,
+            credentials=self.get_credentials,
             labels=labels,
             encryption_spec_key_name=encryption_spec_key_name,
             staging_bucket=staging_bucket,
         )
 
     @staticmethod
-    def extract_hyperparameter_tuning_job_id(obj: Dict) -> str:
-        """Returns unique id of the hyperparameter_tuning_job."""
+    def extract_hyperparameter_tuning_job_id(obj: dict) -> str:
+        """Return unique id of the hyperparameter_tuning_job."""
         return obj["name"].rpartition("/")[-1]
 
-    def wait_for_operation(self, operation: Operation, timeout: Optional[float] = None):
-        """Waits for long-lasting operation to complete."""
+    def wait_for_operation(self, operation: Operation, timeout: float | None = None):
+        """Wait for long-lasting operation to complete."""
         try:
             return operation.result(timeout=timeout)
         except Exception:
@@ -140,7 +147,7 @@ class HyperparameterTuningJobHook(GoogleBaseHook):
             raise AirflowException(error)
 
     def cancel_hyperparameter_tuning_job(self) -> None:
-        """Cancel HyperparameterTuningJob"""
+        """Cancel HyperparameterTuningJob."""
         if self._hyperparameter_tuning_job:
             self._hyperparameter_tuning_job.cancel()
 
@@ -150,31 +157,32 @@ class HyperparameterTuningJobHook(GoogleBaseHook):
         project_id: str,
         region: str,
         display_name: str,
-        metric_spec: Dict[str, str],
-        parameter_spec: Dict[str, hyperparameter_tuning._ParameterSpec],
+        metric_spec: dict[str, str],
+        parameter_spec: dict[str, hyperparameter_tuning._ParameterSpec],
         max_trial_count: int,
         parallel_trial_count: int,
         # START: CustomJob param
-        worker_pool_specs: Union[List[Dict], List[gapic.WorkerPoolSpec]],
-        base_output_dir: Optional[str] = None,
-        custom_job_labels: Optional[Dict[str, str]] = None,
-        custom_job_encryption_spec_key_name: Optional[str] = None,
-        staging_bucket: Optional[str] = None,
+        worker_pool_specs: list[dict] | list[gapic.WorkerPoolSpec],
+        base_output_dir: str | None = None,
+        custom_job_labels: dict[str, str] | None = None,
+        custom_job_encryption_spec_key_name: str | None = None,
+        staging_bucket: str | None = None,
         # END: CustomJob param
         max_failed_trial_count: int = 0,
-        search_algorithm: Optional[str] = None,
-        measurement_selection: Optional[str] = "best",
-        hyperparameter_tuning_job_labels: Optional[Dict[str, str]] = None,
-        hyperparameter_tuning_job_encryption_spec_key_name: Optional[str] = None,
+        search_algorithm: str | None = None,
+        measurement_selection: str | None = "best",
+        hyperparameter_tuning_job_labels: dict[str, str] | None = None,
+        hyperparameter_tuning_job_encryption_spec_key_name: str | None = None,
         # START: run param
-        service_account: Optional[str] = None,
-        network: Optional[str] = None,
-        timeout: Optional[int] = None,  # seconds
+        service_account: str | None = None,
+        network: str | None = None,
+        timeout: int | None = None,  # seconds
         restart_job_on_worker_restart: bool = False,
         enable_web_access: bool = False,
-        tensorboard: Optional[str] = None,
+        tensorboard: str | None = None,
         sync: bool = True,
         # END: run param
+        wait_job_completed: bool = True,
     ) -> HyperparameterTuningJob:
         """
         Create a HyperparameterTuningJob.
@@ -259,6 +267,7 @@ class HyperparameterTuningJobHook(GoogleBaseHook):
             https://cloud.google.com/vertex-ai/docs/experiments/tensorboard-training
         :param sync: Whether to execute this method synchronously. If False, this method will unblock and it
             will be executed in a concurrent Future.
+        :param wait_job_completed: Whether to wait for the job completed.
         """
         custom_job = self.get_custom_job_object(
             project=project_id,
@@ -295,7 +304,11 @@ class HyperparameterTuningJobHook(GoogleBaseHook):
             tensorboard=tensorboard,
             sync=sync,
         )
-        self._hyperparameter_tuning_job.wait()
+
+        if wait_job_completed:
+            self._hyperparameter_tuning_job.wait()
+        else:
+            self._hyperparameter_tuning_job._wait_for_resource_creation()
         return self._hyperparameter_tuning_job
 
     @GoogleBaseHook.fallback_to_default_project_id
@@ -304,12 +317,12 @@ class HyperparameterTuningJobHook(GoogleBaseHook):
         project_id: str,
         region: str,
         hyperparameter_tuning_job: str,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> types.HyperparameterTuningJob:
         """
-        Gets a HyperparameterTuningJob
+        Get a HyperparameterTuningJob.
 
         :param project_id: Required. The ID of the Google Cloud project that the service belongs to.
         :param region: Required. The ID of the Google Cloud region that the service belongs to.
@@ -323,7 +336,7 @@ class HyperparameterTuningJobHook(GoogleBaseHook):
 
         result = client.get_hyperparameter_tuning_job(
             request={
-                'name': name,
+                "name": name,
             },
             retry=retry,
             timeout=timeout,
@@ -336,16 +349,16 @@ class HyperparameterTuningJobHook(GoogleBaseHook):
         self,
         project_id: str,
         region: str,
-        filter: Optional[str] = None,
-        page_size: Optional[int] = None,
-        page_token: Optional[str] = None,
-        read_mask: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        filter: str | None = None,
+        page_size: int | None = None,
+        page_token: str | None = None,
+        read_mask: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> ListHyperparameterTuningJobsPager:
         """
-        Lists HyperparameterTuningJobs in a Location.
+        List HyperparameterTuningJobs in a Location.
 
         :param project_id: Required. The ID of the Google Cloud project that the service belongs to.
         :param region: Required. The ID of the Google Cloud region that the service belongs to.
@@ -371,11 +384,11 @@ class HyperparameterTuningJobHook(GoogleBaseHook):
 
         result = client.list_hyperparameter_tuning_jobs(
             request={
-                'parent': parent,
-                'filter': filter,
-                'page_size': page_size,
-                'page_token': page_token,
-                'read_mask': read_mask,
+                "parent": parent,
+                "filter": filter,
+                "page_size": page_size,
+                "page_token": page_token,
+                "read_mask": read_mask,
             },
             retry=retry,
             timeout=timeout,
@@ -389,12 +402,12 @@ class HyperparameterTuningJobHook(GoogleBaseHook):
         project_id: str,
         region: str,
         hyperparameter_tuning_job: str,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        metadata: Sequence[Tuple[str, str]] = (),
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
     ) -> Operation:
         """
-        Deletes a HyperparameterTuningJob.
+        Delete a HyperparameterTuningJob.
 
         :param project_id: Required. The ID of the Google Cloud project that the service belongs to.
         :param region: Required. The ID of the Google Cloud region that the service belongs to.
@@ -409,10 +422,111 @@ class HyperparameterTuningJobHook(GoogleBaseHook):
 
         result = client.delete_hyperparameter_tuning_job(
             request={
-                'name': name,
+                "name": name,
             },
             retry=retry,
             timeout=timeout,
             metadata=metadata,
         )
         return result
+
+
+class HyperparameterTuningJobAsyncHook(GoogleBaseHook):
+    """Async hook for Google Cloud Vertex AI Hyperparameter Tuning Job APIs."""
+
+    def __init__(
+        self,
+        gcp_conn_id: str = "google_cloud_default",
+        impersonation_chain: str | Sequence[str] | None = None,
+        **kwargs,
+    ):
+        super().__init__(
+            gcp_conn_id=gcp_conn_id,
+            impersonation_chain=impersonation_chain,
+            **kwargs,
+        )
+
+    @lru_cache
+    def get_job_service_client(self, region: str | None = None) -> JobServiceAsyncClient:
+        """
+        Retrieve Vertex AI async client.
+
+        :return: Google Cloud Vertex AI client object.
+        """
+        endpoint = f"{region}-aiplatform.googleapis.com:443" if region and region != "global" else None
+        return JobServiceAsyncClient(
+            credentials=self.get_credentials(),
+            client_info=CLIENT_INFO,
+            client_options=ClientOptions(api_endpoint=endpoint),
+        )
+
+    async def get_hyperparameter_tuning_job(
+        self,
+        project_id: str,
+        location: str,
+        job_id: str,
+        retry: AsyncRetry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
+    ) -> types.HyperparameterTuningJob:
+        """
+        Retrieve a hyperparameter tuning job.
+
+        :param project_id: Required. The ID of the Google Cloud project that the job belongs to.
+        :param location: Required. The ID of the Google Cloud region that the job belongs to.
+        :param job_id: Required. The hyperparameter tuning job id.
+        :param retry: Designation of what errors, if any, should be retried.
+        :param timeout: The timeout for this request.
+        :param metadata: Strings which should be sent along with the request as metadata.
+        """
+        client: JobServiceAsyncClient = self.get_job_service_client(region=location)
+        job_name = client.hyperparameter_tuning_job_path(project_id, location, job_id)
+
+        result = await client.get_hyperparameter_tuning_job(
+            request={
+                "name": job_name,
+            },
+            retry=retry,
+            timeout=timeout,
+            metadata=metadata,
+        )
+
+        return result
+
+    async def wait_hyperparameter_tuning_job(
+        self,
+        project_id: str,
+        location: str,
+        job_id: str,
+        retry: AsyncRetry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        metadata: Sequence[tuple[str, str]] = (),
+        poll_interval: int = 10,
+    ) -> types.HyperparameterTuningJob:
+        statuses_complete = {
+            JobState.JOB_STATE_CANCELLED,
+            JobState.JOB_STATE_FAILED,
+            JobState.JOB_STATE_PAUSED,
+            JobState.JOB_STATE_SUCCEEDED,
+        }
+        while True:
+            try:
+                self.log.info("Requesting hyperparameter tuning job with id %s", job_id)
+                job: types.HyperparameterTuningJob = await self.get_hyperparameter_tuning_job(
+                    project_id=project_id,
+                    location=location,
+                    job_id=job_id,
+                    retry=retry,
+                    timeout=timeout,
+                    metadata=metadata,
+                )
+            except Exception as ex:
+                self.log.exception("Exception occurred while requesting job %s", job_id)
+                raise AirflowException(ex)
+
+            self.log.info("Status of the hyperparameter tuning job %s is %s", job.name, job.state.name)
+            if job.state in statuses_complete:
+                return job
+
+            self.log.info("Sleeping for %s seconds.", poll_interval)
+            await asyncio.sleep(poll_interval)

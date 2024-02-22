@@ -16,35 +16,36 @@
 # specific language governing permissions and limitations
 # under the License.
 """This module contains a Google Cloud Vision operator."""
+from __future__ import annotations
 
 from copy import deepcopy
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, Any, Sequence, Tuple
 
 from google.api_core.exceptions import AlreadyExists
 from google.api_core.gapic_v1.method import DEFAULT, _MethodDefault
-from google.api_core.retry import Retry
-from google.cloud.vision_v1.types import (
+from google.cloud.vision_v1 import (
     AnnotateImageRequest,
-    FieldMask,
     Image,
     Product,
     ProductSet,
     ReferenceImage,
 )
 
-from airflow.models import BaseOperator
 from airflow.providers.google.cloud.hooks.vision import CloudVisionHook
+from airflow.providers.google.cloud.operators.cloud_base import GoogleCloudBaseOperator
 
 if TYPE_CHECKING:
+    from google.api_core.retry import Retry
+    from google.protobuf.field_mask_pb2 import FieldMask
+
     from airflow.utils.context import Context
 
 
 MetaData = Sequence[Tuple[str, str]]
 
 
-class CloudVisionCreateProductSetOperator(BaseOperator):
-    """
-    Creates a new ProductSet resource.
+class CloudVisionCreateProductSetOperator(GoogleCloudBaseOperator):
+    """Create a new ProductSet resource.
 
     .. seealso::
         For more information on how to use this operator, take a look at the guide:
@@ -90,15 +91,15 @@ class CloudVisionCreateProductSetOperator(BaseOperator):
     def __init__(
         self,
         *,
-        product_set: Union[dict, ProductSet],
+        product_set: dict | ProductSet,
         location: str,
-        project_id: Optional[str] = None,
-        product_set_id: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
+        project_id: str | None = None,
+        product_set_id: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
         metadata: MetaData = (),
         gcp_conn_id: str = "google_cloud_default",
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
+        impersonation_chain: str | Sequence[str] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -112,7 +113,7 @@ class CloudVisionCreateProductSetOperator(BaseOperator):
         self.gcp_conn_id = gcp_conn_id
         self.impersonation_chain = impersonation_chain
 
-    def execute(self, context: 'Context'):
+    def execute(self, context: Context):
         hook = CloudVisionHook(
             gcp_conn_id=self.gcp_conn_id,
             impersonation_chain=self.impersonation_chain,
@@ -135,9 +136,8 @@ class CloudVisionCreateProductSetOperator(BaseOperator):
             return self.product_set_id
 
 
-class CloudVisionGetProductSetOperator(BaseOperator):
-    """
-    Gets information associated with a ProductSet.
+class CloudVisionGetProductSetOperator(GoogleCloudBaseOperator):
+    """Get information associated with a ProductSet.
 
     .. seealso::
         For more information on how to use this operator, take a look at the guide:
@@ -167,11 +167,11 @@ class CloudVisionGetProductSetOperator(BaseOperator):
 
     # [START vision_productset_get_template_fields]
     template_fields: Sequence[str] = (
-        'location',
-        'project_id',
-        'product_set_id',
-        'gcp_conn_id',
-        'impersonation_chain',
+        "location",
+        "project_id",
+        "product_set_id",
+        "gcp_conn_id",
+        "impersonation_chain",
     )
     # [END vision_productset_get_template_fields]
 
@@ -180,12 +180,12 @@ class CloudVisionGetProductSetOperator(BaseOperator):
         *,
         location: str,
         product_set_id: str,
-        project_id: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
+        project_id: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
         metadata: MetaData = (),
-        gcp_conn_id: str = 'google_cloud_default',
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
+        gcp_conn_id: str = "google_cloud_default",
+        impersonation_chain: str | Sequence[str] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -198,7 +198,7 @@ class CloudVisionGetProductSetOperator(BaseOperator):
         self.gcp_conn_id = gcp_conn_id
         self.impersonation_chain = impersonation_chain
 
-    def execute(self, context: 'Context'):
+    def execute(self, context: Context):
         hook = CloudVisionHook(
             gcp_conn_id=self.gcp_conn_id,
             impersonation_chain=self.impersonation_chain,
@@ -213,20 +213,22 @@ class CloudVisionGetProductSetOperator(BaseOperator):
         )
 
 
-class CloudVisionUpdateProductSetOperator(BaseOperator):
-    """
-    Makes changes to a `ProductSet` resource. Only display_name can be updated currently.
+class CloudVisionUpdateProductSetOperator(GoogleCloudBaseOperator):
+    """Make changes to a `ProductSet` resource.
 
-    .. note:: To locate the `ProductSet` resource, its `name` in the form
+    Only ``display_name`` can be updated currently.
+
+    .. note:: To locate the ``ProductSet`` resource, its ``name`` in the form
         `projects/PROJECT_ID/locations/LOC_ID/productSets/PRODUCT_SET_ID` is necessary.
 
-    You can provide the `name` directly as an attribute of the `product_set` object.
-    However, you can leave it blank and provide `location` and `product_set_id` instead
-    (and optionally `project_id` - if not present, the connection default will be used)
-    and the `name` will be created by the operator itself.
+    You can provide the ``name` directly as an attribute of the ``product_set``
+    object. You can also leave it blank, in which case ``name`` will be created
+    by the operator from ``location`` and ``product_set_id`` instead (and
+    optionally ``project_id``; if not present, the connection default will be
+    used).
 
-    This mechanism exists for your convenience, to allow leaving the `project_id` empty
-    and having Airflow use the connection default `project_id`.
+    This mechanism exists for your convenience, to allow leaving the
+    ``project_id`` empty and having Airflow use the connection default.
 
     .. seealso::
         For more information on how to use this operator, take a look at the guide:
@@ -241,7 +243,7 @@ class CloudVisionUpdateProductSetOperator(BaseOperator):
     :param project_id: (Optional) The project in which the ProductSet should be created. If set to None or
         missing, the default project_id from the Google Cloud connection is used.
     :param update_mask: (Optional) The `FieldMask` that specifies which fields to update. If update_mask
-        isn’t specified, all mutable fields are to be updated. Valid mask path is display_name. If a dict is
+        isn't specified, all mutable fields are to be updated. Valid mask path is display_name. If a dict is
         provided, it must be of the same form as the protobuf message `FieldMask`.
     :param retry: (Optional) A retry object used to retry requests. If `None` is
         specified, requests will not be retried.
@@ -262,27 +264,27 @@ class CloudVisionUpdateProductSetOperator(BaseOperator):
 
     # [START vision_productset_update_template_fields]
     template_fields: Sequence[str] = (
-        'location',
-        'project_id',
-        'product_set_id',
-        'gcp_conn_id',
-        'impersonation_chain',
+        "location",
+        "project_id",
+        "product_set_id",
+        "gcp_conn_id",
+        "impersonation_chain",
     )
     # [END vision_productset_update_template_fields]
 
     def __init__(
         self,
         *,
-        product_set: Union[Dict, ProductSet],
-        location: Optional[str] = None,
-        product_set_id: Optional[str] = None,
-        project_id: Optional[str] = None,
-        update_mask: Union[Dict, FieldMask] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
+        product_set: dict | ProductSet,
+        location: str | None = None,
+        product_set_id: str | None = None,
+        project_id: str | None = None,
+        update_mask: dict | FieldMask | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
         metadata: MetaData = (),
-        gcp_conn_id: str = 'google_cloud_default',
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
+        gcp_conn_id: str = "google_cloud_default",
+        impersonation_chain: str | Sequence[str] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -297,11 +299,14 @@ class CloudVisionUpdateProductSetOperator(BaseOperator):
         self.gcp_conn_id = gcp_conn_id
         self.impersonation_chain = impersonation_chain
 
-    def execute(self, context: 'Context'):
+    def execute(self, context: Context):
         hook = CloudVisionHook(
             gcp_conn_id=self.gcp_conn_id,
             impersonation_chain=self.impersonation_chain,
         )
+
+        if isinstance(self.product_set, dict):
+            self.product_set = ProductSet(self.product_set)
         return hook.update_product_set(
             location=self.location,
             product_set_id=self.product_set_id,
@@ -314,18 +319,18 @@ class CloudVisionUpdateProductSetOperator(BaseOperator):
         )
 
 
-class CloudVisionDeleteProductSetOperator(BaseOperator):
-    """
-    Permanently deletes a `ProductSet`. `Products` and `ReferenceImages` in the
-    `ProductSet` are not deleted. The actual image files are not deleted from Google
-    Cloud Storage.
+class CloudVisionDeleteProductSetOperator(GoogleCloudBaseOperator):
+    """Permanently deletes a ``ProductSet``.
+
+    ``Products`` and ``ReferenceImages`` in the ``ProductSet`` are not deleted.
+    The actual image files are not deleted from Google Cloud Storage.
 
     .. seealso::
         For more information on how to use this operator, take a look at the guide:
         :ref:`howto/operator:CloudVisionDeleteProductSetOperator`
 
-    :param location: (Required) The region where the ProductSet is located. Valid regions (as of 2019-02-05)
-        are: us-east1, us-west1, europe-west1, asia-east1
+    :param location: (Required) The region where the ProductSet is located.
+        Valid regions (as of 2019-02-05) are: us-east1, us-west1, europe-west1, asia-east1
     :param product_set_id: (Required) The resource id of this ProductSet.
     :param project_id: (Optional) The project in which the ProductSet should be created.
         If set to None or missing, the default project_id from the Google Cloud connection is used.
@@ -348,11 +353,11 @@ class CloudVisionDeleteProductSetOperator(BaseOperator):
 
     # [START vision_productset_delete_template_fields]
     template_fields: Sequence[str] = (
-        'location',
-        'project_id',
-        'product_set_id',
-        'gcp_conn_id',
-        'impersonation_chain',
+        "location",
+        "project_id",
+        "product_set_id",
+        "gcp_conn_id",
+        "impersonation_chain",
     )
     # [END vision_productset_delete_template_fields]
 
@@ -361,12 +366,12 @@ class CloudVisionDeleteProductSetOperator(BaseOperator):
         *,
         location: str,
         product_set_id: str,
-        project_id: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
+        project_id: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
         metadata: MetaData = (),
-        gcp_conn_id: str = 'google_cloud_default',
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
+        gcp_conn_id: str = "google_cloud_default",
+        impersonation_chain: str | Sequence[str] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -379,7 +384,7 @@ class CloudVisionDeleteProductSetOperator(BaseOperator):
         self.gcp_conn_id = gcp_conn_id
         self.impersonation_chain = impersonation_chain
 
-    def execute(self, context: 'Context'):
+    def execute(self, context: Context):
         hook = CloudVisionHook(
             gcp_conn_id=self.gcp_conn_id,
             impersonation_chain=self.impersonation_chain,
@@ -394,15 +399,14 @@ class CloudVisionDeleteProductSetOperator(BaseOperator):
         )
 
 
-class CloudVisionCreateProductOperator(BaseOperator):
-    """
-    Creates and returns a new product resource.
+class CloudVisionCreateProductOperator(GoogleCloudBaseOperator):
+    """Create and return a new product resource.
 
-    Possible errors regarding the `Product` object provided:
+    Possible errors regarding the ``Product`` object provided:
 
-    - Returns `INVALID_ARGUMENT` if `display_name` is missing or longer than 4096 characters.
-    - Returns `INVALID_ARGUMENT` if `description` is longer than 4096 characters.
-    - Returns `INVALID_ARGUMENT` if `product_category` is missing or invalid.
+    - Returns ``INVALID_ARGUMENT`` if ``display_name`` is missing or longer than 4096 characters.
+    - Returns ``INVALID_ARGUMENT`` if ``description`` is longer than 4096 characters.
+    - Returns ``INVALID_ARGUMENT`` if ``product_category`` is missing or invalid.
 
     .. seealso::
         For more information on how to use this operator, take a look at the guide:
@@ -437,11 +441,11 @@ class CloudVisionCreateProductOperator(BaseOperator):
 
     # [START vision_product_create_template_fields]
     template_fields: Sequence[str] = (
-        'location',
-        'project_id',
-        'product_id',
-        'gcp_conn_id',
-        'impersonation_chain',
+        "location",
+        "project_id",
+        "product_id",
+        "gcp_conn_id",
+        "impersonation_chain",
     )
     # [END vision_product_create_template_fields]
 
@@ -450,13 +454,13 @@ class CloudVisionCreateProductOperator(BaseOperator):
         *,
         location: str,
         product: str,
-        project_id: Optional[str] = None,
-        product_id: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
+        project_id: str | None = None,
+        product_id: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
         metadata: MetaData = (),
-        gcp_conn_id: str = 'google_cloud_default',
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
+        gcp_conn_id: str = "google_cloud_default",
+        impersonation_chain: str | Sequence[str] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -470,7 +474,7 @@ class CloudVisionCreateProductOperator(BaseOperator):
         self.gcp_conn_id = gcp_conn_id
         self.impersonation_chain = impersonation_chain
 
-    def execute(self, context: 'Context'):
+    def execute(self, context: Context):
         hook = CloudVisionHook(
             gcp_conn_id=self.gcp_conn_id,
             impersonation_chain=self.impersonation_chain,
@@ -487,14 +491,13 @@ class CloudVisionCreateProductOperator(BaseOperator):
             )
         except AlreadyExists:
             self.log.info(
-                'Product with id %s already exists. Exiting from the create operation.', self.product_id
+                "Product with id %s already exists. Exiting from the create operation.", self.product_id
             )
             return self.product_id
 
 
-class CloudVisionGetProductOperator(BaseOperator):
-    """
-    Gets information associated with a `Product`.
+class CloudVisionGetProductOperator(GoogleCloudBaseOperator):
+    """Get information associated with a ``Product``.
 
     Possible errors:
 
@@ -528,11 +531,11 @@ class CloudVisionGetProductOperator(BaseOperator):
 
     # [START vision_product_get_template_fields]
     template_fields: Sequence[str] = (
-        'location',
-        'project_id',
-        'product_id',
-        'gcp_conn_id',
-        'impersonation_chain',
+        "location",
+        "project_id",
+        "product_id",
+        "gcp_conn_id",
+        "impersonation_chain",
     )
     # [END vision_product_get_template_fields]
 
@@ -541,12 +544,12 @@ class CloudVisionGetProductOperator(BaseOperator):
         *,
         location: str,
         product_id: str,
-        project_id: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
+        project_id: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
         metadata: MetaData = (),
         gcp_conn_id: str = "google_cloud_default",
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
+        impersonation_chain: str | Sequence[str] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -559,7 +562,7 @@ class CloudVisionGetProductOperator(BaseOperator):
         self.gcp_conn_id = gcp_conn_id
         self.impersonation_chain = impersonation_chain
 
-    def execute(self, context: 'Context'):
+    def execute(self, context: Context):
         hook = CloudVisionHook(
             gcp_conn_id=self.gcp_conn_id,
             impersonation_chain=self.impersonation_chain,
@@ -574,10 +577,10 @@ class CloudVisionGetProductOperator(BaseOperator):
         )
 
 
-class CloudVisionUpdateProductOperator(BaseOperator):
-    """
-    Makes changes to a Product resource. Only the display_name, description, and labels fields can be
-    updated right now.
+class CloudVisionUpdateProductOperator(GoogleCloudBaseOperator):
+    """Make changes to a Product resource.
+
+    Only the display_name, description, and labels fields can be updated right now.
 
     If labels are updated, the change will not be reflected in queries until the next index time.
 
@@ -612,7 +615,7 @@ class CloudVisionUpdateProductOperator(BaseOperator):
     :param project_id: (Optional) The project in which the Product is located. If set to None or
         missing, the default project_id from the Google Cloud connection is used.
     :param update_mask: (Optional) The `FieldMask` that specifies which fields to update. If update_mask
-        isn’t specified, all mutable fields are to be updated. Valid mask paths include product_labels,
+        isn't specified, all mutable fields are to be updated. Valid mask paths include product_labels,
         display_name, and description. If a dict is provided, it must be of the same form as the protobuf
         message `FieldMask`.
     :param retry: (Optional) A retry object used to retry requests. If `None` is
@@ -634,27 +637,27 @@ class CloudVisionUpdateProductOperator(BaseOperator):
 
     # [START vision_product_update_template_fields]
     template_fields: Sequence[str] = (
-        'location',
-        'project_id',
-        'product_id',
-        'gcp_conn_id',
-        'impersonation_chain',
+        "location",
+        "project_id",
+        "product_id",
+        "gcp_conn_id",
+        "impersonation_chain",
     )
     # [END vision_product_update_template_fields]
 
     def __init__(
         self,
         *,
-        product: Union[Dict, Product],
-        location: Optional[str] = None,
-        product_id: Optional[str] = None,
-        project_id: Optional[str] = None,
-        update_mask: Union[Dict, FieldMask] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
+        product: dict | Product,
+        location: str | None = None,
+        product_id: str | None = None,
+        project_id: str | None = None,
+        update_mask: dict | FieldMask | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
         metadata: MetaData = (),
-        gcp_conn_id: str = 'google_cloud_default',
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
+        gcp_conn_id: str = "google_cloud_default",
+        impersonation_chain: str | Sequence[str] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -669,29 +672,30 @@ class CloudVisionUpdateProductOperator(BaseOperator):
         self.gcp_conn_id = gcp_conn_id
         self.impersonation_chain = impersonation_chain
 
-    def execute(self, context: 'Context'):
+    def execute(self, context: Context):
         hook = CloudVisionHook(
             gcp_conn_id=self.gcp_conn_id,
             impersonation_chain=self.impersonation_chain,
         )
+
         return hook.update_product(
             product=self.product,
             location=self.location,
             product_id=self.product_id,
             project_id=self.project_id,
-            update_mask=self.update_mask,
+            update_mask=self.update_mask,  # type: ignore
             retry=self.retry,
             timeout=self.timeout,
             metadata=self.metadata,
         )
 
 
-class CloudVisionDeleteProductOperator(BaseOperator):
-    """
-    Permanently deletes a product and its reference images.
+class CloudVisionDeleteProductOperator(GoogleCloudBaseOperator):
+    """Permanently delete a product and its reference images.
 
-    Metadata of the product and all its images will be deleted right away, but search queries against
-    ProductSets containing the product may still work until all related caches are refreshed.
+    Metadata of the product and all its images will be deleted right away, but
+    search queries against ProductSets containing the product may still work
+    until all related caches are refreshed.
 
     Possible errors:
 
@@ -725,11 +729,11 @@ class CloudVisionDeleteProductOperator(BaseOperator):
 
     # [START vision_product_delete_template_fields]
     template_fields: Sequence[str] = (
-        'location',
-        'project_id',
-        'product_id',
-        'gcp_conn_id',
-        'impersonation_chain',
+        "location",
+        "project_id",
+        "product_id",
+        "gcp_conn_id",
+        "impersonation_chain",
     )
     # [END vision_product_delete_template_fields]
 
@@ -738,12 +742,12 @@ class CloudVisionDeleteProductOperator(BaseOperator):
         *,
         location: str,
         product_id: str,
-        project_id: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
+        project_id: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
         metadata: MetaData = (),
-        gcp_conn_id: str = 'google_cloud_default',
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
+        gcp_conn_id: str = "google_cloud_default",
+        impersonation_chain: str | Sequence[str] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -756,7 +760,7 @@ class CloudVisionDeleteProductOperator(BaseOperator):
         self.gcp_conn_id = gcp_conn_id
         self.impersonation_chain = impersonation_chain
 
-    def execute(self, context: 'Context'):
+    def execute(self, context: Context):
         hook = CloudVisionHook(
             gcp_conn_id=self.gcp_conn_id,
             impersonation_chain=self.impersonation_chain,
@@ -771,9 +775,8 @@ class CloudVisionDeleteProductOperator(BaseOperator):
         )
 
 
-class CloudVisionImageAnnotateOperator(BaseOperator):
-    """
-    Run image detection and annotation for an image or a batch of images.
+class CloudVisionImageAnnotateOperator(GoogleCloudBaseOperator):
+    """Run image detection and annotation for an image or a batch of images.
 
     .. seealso::
         For more information on how to use this operator, take a look at the guide:
@@ -800,20 +803,20 @@ class CloudVisionImageAnnotateOperator(BaseOperator):
 
     # [START vision_annotate_image_template_fields]
     template_fields: Sequence[str] = (
-        'request',
-        'gcp_conn_id',
-        'impersonation_chain',
+        "request",
+        "gcp_conn_id",
+        "impersonation_chain",
     )
     # [END vision_annotate_image_template_fields]
 
     def __init__(
         self,
         *,
-        request: Union[Dict, AnnotateImageRequest],
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        gcp_conn_id: str = 'google_cloud_default',
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
+        request: dict | AnnotateImageRequest,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        gcp_conn_id: str = "google_cloud_default",
+        impersonation_chain: str | Sequence[str] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -823,7 +826,7 @@ class CloudVisionImageAnnotateOperator(BaseOperator):
         self.gcp_conn_id = gcp_conn_id
         self.impersonation_chain = impersonation_chain
 
-    def execute(self, context: 'Context'):
+    def execute(self, context: Context):
         hook = CloudVisionHook(
             gcp_conn_id=self.gcp_conn_id,
             impersonation_chain=self.impersonation_chain,
@@ -839,9 +842,8 @@ class CloudVisionImageAnnotateOperator(BaseOperator):
         return response
 
 
-class CloudVisionCreateReferenceImageOperator(BaseOperator):
-    """
-    Creates and returns a new ReferenceImage ID resource.
+class CloudVisionCreateReferenceImageOperator(GoogleCloudBaseOperator):
+    """Create and return a new ReferenceImage ID resource.
 
     .. seealso::
         For more information on how to use this operator, take a look at the guide:
@@ -893,15 +895,15 @@ class CloudVisionCreateReferenceImageOperator(BaseOperator):
         self,
         *,
         location: str,
-        reference_image: Union[Dict, ReferenceImage],
+        reference_image: dict | ReferenceImage,
         product_id: str,
-        reference_image_id: Optional[str] = None,
-        project_id: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
+        reference_image_id: str | None = None,
+        project_id: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
         metadata: MetaData = (),
-        gcp_conn_id: str = 'google_cloud_default',
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
+        gcp_conn_id: str = "google_cloud_default",
+        impersonation_chain: str | Sequence[str] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -916,12 +918,15 @@ class CloudVisionCreateReferenceImageOperator(BaseOperator):
         self.gcp_conn_id = gcp_conn_id
         self.impersonation_chain = impersonation_chain
 
-    def execute(self, context: 'Context'):
+    def execute(self, context: Context):
         try:
             hook = CloudVisionHook(
                 gcp_conn_id=self.gcp_conn_id,
                 impersonation_chain=self.impersonation_chain,
             )
+
+            if isinstance(self.reference_image, dict):
+                self.reference_image = ReferenceImage(self.reference_image)
             return hook.create_reference_image(
                 location=self.location,
                 product_id=self.product_id,
@@ -940,9 +945,8 @@ class CloudVisionCreateReferenceImageOperator(BaseOperator):
             return self.reference_image_id
 
 
-class CloudVisionDeleteReferenceImageOperator(BaseOperator):
-    """
-    Deletes a ReferenceImage ID resource.
+class CloudVisionDeleteReferenceImageOperator(GoogleCloudBaseOperator):
+    """Delete a ReferenceImage ID resource.
 
     .. seealso::
         For more information on how to use this operator, take a look at the guide:
@@ -991,12 +995,12 @@ class CloudVisionDeleteReferenceImageOperator(BaseOperator):
         location: str,
         product_id: str,
         reference_image_id: str,
-        project_id: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
+        project_id: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
         metadata: MetaData = (),
-        gcp_conn_id: str = 'google_cloud_default',
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
+        gcp_conn_id: str = "google_cloud_default",
+        impersonation_chain: str | Sequence[str] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -1010,7 +1014,7 @@ class CloudVisionDeleteReferenceImageOperator(BaseOperator):
         self.gcp_conn_id = gcp_conn_id
         self.impersonation_chain = impersonation_chain
 
-    def execute(self, context: 'Context'):
+    def execute(self, context: Context):
         hook = CloudVisionHook(
             gcp_conn_id=self.gcp_conn_id,
             impersonation_chain=self.impersonation_chain,
@@ -1026,15 +1030,15 @@ class CloudVisionDeleteReferenceImageOperator(BaseOperator):
         )
 
 
-class CloudVisionAddProductToProductSetOperator(BaseOperator):
-    """
-    Adds a Product to the specified ProductSet. If the Product is already present, no change is made.
+class CloudVisionAddProductToProductSetOperator(GoogleCloudBaseOperator):
+    """Add a Product to the specified ProductSet.
 
-    One Product can be added to at most 100 ProductSets.
+    If the Product is already present, no change is made. One Product can be
+    added to at most 100 ProductSets.
 
     Possible errors:
 
-    - Returns `NOT_FOUND` if the Product or the ProductSet doesn’t exist.
+    - Returns `NOT_FOUND` if the Product or the ProductSet doesn't exist.
 
     .. seealso::
         For more information on how to use this operator, take a look at the guide:
@@ -1080,12 +1084,12 @@ class CloudVisionAddProductToProductSetOperator(BaseOperator):
         product_set_id: str,
         product_id: str,
         location: str,
-        project_id: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
+        project_id: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
         metadata: MetaData = (),
         gcp_conn_id: str = "google_cloud_default",
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
+        impersonation_chain: str | Sequence[str] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -1099,7 +1103,7 @@ class CloudVisionAddProductToProductSetOperator(BaseOperator):
         self.gcp_conn_id = gcp_conn_id
         self.impersonation_chain = impersonation_chain
 
-    def execute(self, context: 'Context'):
+    def execute(self, context: Context):
         hook = CloudVisionHook(
             gcp_conn_id=self.gcp_conn_id,
             impersonation_chain=self.impersonation_chain,
@@ -1115,9 +1119,8 @@ class CloudVisionAddProductToProductSetOperator(BaseOperator):
         )
 
 
-class CloudVisionRemoveProductFromProductSetOperator(BaseOperator):
-    """
-    Removes a Product from the specified ProductSet.
+class CloudVisionRemoveProductFromProductSetOperator(GoogleCloudBaseOperator):
+    """Remove a Product from the specified ProductSet.
 
     .. seealso::
         For more information on how to use this operator, take a look at the guide:
@@ -1163,12 +1166,12 @@ class CloudVisionRemoveProductFromProductSetOperator(BaseOperator):
         product_set_id: str,
         product_id: str,
         location: str,
-        project_id: Optional[str] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
+        project_id: str | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
         metadata: MetaData = (),
         gcp_conn_id: str = "google_cloud_default",
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
+        impersonation_chain: str | Sequence[str] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -1182,7 +1185,7 @@ class CloudVisionRemoveProductFromProductSetOperator(BaseOperator):
         self.gcp_conn_id = gcp_conn_id
         self.impersonation_chain = impersonation_chain
 
-    def execute(self, context: 'Context'):
+    def execute(self, context: Context):
         hook = CloudVisionHook(
             gcp_conn_id=self.gcp_conn_id,
             impersonation_chain=self.impersonation_chain,
@@ -1198,9 +1201,8 @@ class CloudVisionRemoveProductFromProductSetOperator(BaseOperator):
         )
 
 
-class CloudVisionDetectTextOperator(BaseOperator):
-    """
-    Detects Text in the image
+class CloudVisionDetectTextOperator(GoogleCloudBaseOperator):
+    """Detect Text in the image.
 
     .. seealso::
         For more information on how to use this operator, take a look at the guide:
@@ -1241,15 +1243,15 @@ class CloudVisionDetectTextOperator(BaseOperator):
 
     def __init__(
         self,
-        image: Union[Dict, Image],
-        max_results: Optional[int] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        language_hints: Optional[Union[str, List[str]]] = None,
-        web_detection_params: Optional[Dict] = None,
-        additional_properties: Optional[Dict] = None,
+        image: dict | Image,
+        max_results: int | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        language_hints: str | list[str] | None = None,
+        web_detection_params: dict | None = None,
+        additional_properties: dict | None = None,
         gcp_conn_id: str = "google_cloud_default",
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
+        impersonation_chain: str | Sequence[str] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -1266,7 +1268,7 @@ class CloudVisionDetectTextOperator(BaseOperator):
         )
         self.impersonation_chain = impersonation_chain
 
-    def execute(self, context: 'Context'):
+    def execute(self, context: Context):
         hook = CloudVisionHook(
             gcp_conn_id=self.gcp_conn_id,
             impersonation_chain=self.impersonation_chain,
@@ -1280,9 +1282,8 @@ class CloudVisionDetectTextOperator(BaseOperator):
         )
 
 
-class CloudVisionTextDetectOperator(BaseOperator):
-    """
-    Detects Document Text in the image
+class CloudVisionTextDetectOperator(GoogleCloudBaseOperator):
+    """Detect Document Text in the image.
 
     .. seealso::
         For more information on how to use this operator, take a look at the guide:
@@ -1323,15 +1324,15 @@ class CloudVisionTextDetectOperator(BaseOperator):
 
     def __init__(
         self,
-        image: Union[Dict, Image],
-        max_results: Optional[int] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        language_hints: Optional[Union[str, List[str]]] = None,
-        web_detection_params: Optional[Dict] = None,
-        additional_properties: Optional[Dict] = None,
+        image: dict | Image,
+        max_results: int | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        language_hints: str | list[str] | None = None,
+        web_detection_params: dict | None = None,
+        additional_properties: dict | None = None,
         gcp_conn_id: str = "google_cloud_default",
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
+        impersonation_chain: str | Sequence[str] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -1347,7 +1348,7 @@ class CloudVisionTextDetectOperator(BaseOperator):
         )
         self.impersonation_chain = impersonation_chain
 
-    def execute(self, context: 'Context'):
+    def execute(self, context: Context):
         hook = CloudVisionHook(
             gcp_conn_id=self.gcp_conn_id,
             impersonation_chain=self.impersonation_chain,
@@ -1361,9 +1362,8 @@ class CloudVisionTextDetectOperator(BaseOperator):
         )
 
 
-class CloudVisionDetectImageLabelsOperator(BaseOperator):
-    """
-    Detects Document Text in the image
+class CloudVisionDetectImageLabelsOperator(GoogleCloudBaseOperator):
+    """Detect Document Text in the image.
 
     .. seealso::
         For more information on how to use this operator, take a look at the guide:
@@ -1400,13 +1400,13 @@ class CloudVisionDetectImageLabelsOperator(BaseOperator):
 
     def __init__(
         self,
-        image: Union[Dict, Image],
-        max_results: Optional[int] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        additional_properties: Optional[Dict] = None,
+        image: dict | Image,
+        max_results: int | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        additional_properties: dict | None = None,
         gcp_conn_id: str = "google_cloud_default",
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
+        impersonation_chain: str | Sequence[str] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -1418,7 +1418,7 @@ class CloudVisionDetectImageLabelsOperator(BaseOperator):
         self.additional_properties = additional_properties
         self.impersonation_chain = impersonation_chain
 
-    def execute(self, context: 'Context'):
+    def execute(self, context: Context):
         hook = CloudVisionHook(
             gcp_conn_id=self.gcp_conn_id,
             impersonation_chain=self.impersonation_chain,
@@ -1432,9 +1432,8 @@ class CloudVisionDetectImageLabelsOperator(BaseOperator):
         )
 
 
-class CloudVisionDetectImageSafeSearchOperator(BaseOperator):
-    """
-    Detects Document Text in the image
+class CloudVisionDetectImageSafeSearchOperator(GoogleCloudBaseOperator):
+    """Detect Document Text in the image.
 
     .. seealso::
         For more information on how to use this operator, take a look at the guide:
@@ -1471,13 +1470,13 @@ class CloudVisionDetectImageSafeSearchOperator(BaseOperator):
 
     def __init__(
         self,
-        image: Union[Dict, Image],
-        max_results: Optional[int] = None,
-        retry: Union[Retry, _MethodDefault] = DEFAULT,
-        timeout: Optional[float] = None,
-        additional_properties: Optional[Dict] = None,
+        image: dict | Image,
+        max_results: int | None = None,
+        retry: Retry | _MethodDefault = DEFAULT,
+        timeout: float | None = None,
+        additional_properties: dict | None = None,
         gcp_conn_id: str = "google_cloud_default",
-        impersonation_chain: Optional[Union[str, Sequence[str]]] = None,
+        impersonation_chain: str | Sequence[str] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -1489,7 +1488,7 @@ class CloudVisionDetectImageSafeSearchOperator(BaseOperator):
         self.additional_properties = additional_properties
         self.impersonation_chain = impersonation_chain
 
-    def execute(self, context: 'Context'):
+    def execute(self, context: Context):
         hook = CloudVisionHook(
             gcp_conn_id=self.gcp_conn_id,
             impersonation_chain=self.impersonation_chain,
@@ -1504,11 +1503,12 @@ class CloudVisionDetectImageSafeSearchOperator(BaseOperator):
 
 
 def prepare_additional_parameters(
-    additional_properties: Optional[Dict], language_hints: Any, web_detection_params: Any
-) -> Optional[Dict]:
-    """
-    Creates additional_properties parameter based on language_hints, web_detection_params and
-    additional_properties parameters specified by the user
+    additional_properties: dict | None, language_hints: Any, web_detection_params: Any
+) -> dict | None:
+    """Create a value for the ``additional_properties`` parameter.
+
+    The new value is based on ``language_hints``, ``web_detection_params``, and
+    ``additional_properties`` parameters specified by the user.
     """
     if language_hints is None and web_detection_params is None:
         return additional_properties
@@ -1518,14 +1518,14 @@ def prepare_additional_parameters(
 
     merged_additional_parameters = deepcopy(additional_properties)
 
-    if 'image_context' not in merged_additional_parameters:
-        merged_additional_parameters['image_context'] = {}
+    if "image_context" not in merged_additional_parameters:
+        merged_additional_parameters["image_context"] = {}
 
-    merged_additional_parameters['image_context']['language_hints'] = merged_additional_parameters[
-        'image_context'
-    ].get('language_hints', language_hints)
-    merged_additional_parameters['image_context']['web_detection_params'] = merged_additional_parameters[
-        'image_context'
-    ].get('web_detection_params', web_detection_params)
+    merged_additional_parameters["image_context"]["language_hints"] = merged_additional_parameters[
+        "image_context"
+    ].get("language_hints", language_hints)
+    merged_additional_parameters["image_context"]["web_detection_params"] = merged_additional_parameters[
+        "image_context"
+    ].get("web_detection_params", web_detection_params)
 
     return merged_additional_parameters

@@ -14,6 +14,8 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
+
 import contextlib
 import functools
 import math
@@ -115,13 +117,13 @@ if __name__ == "__main__":
         """Monte Carlo"""
         inside = 0
 
-        for _ in range(0, total):
+        for _ in range(total):
             x_val = random.random() ** 2
             y_val = random.random() ** 2
-            if math.sqrt(x_val + y_val) < 1.0:
+            if math.sqrt(x_val + y_val) < 1:
                 inside += 1
 
-        return (float(inside) / total) * 4
+        return (inside / total) * 4
 
     # Example 1:s
     with timeout(1):

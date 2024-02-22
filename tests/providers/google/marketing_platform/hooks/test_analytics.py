@@ -15,7 +15,8 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-import unittest
+from __future__ import annotations
+
 from unittest import mock
 
 from airflow.providers.google.marketing_platform.hooks.analytics import GoogleAnalyticsHook
@@ -31,8 +32,8 @@ DELEGATE_TO = "TEST_DELEGATE_TO"
 IMPERSONATION_CHAIN = ["ACCOUNT_1", "ACCOUNT_2", "ACCOUNT_3"]
 
 
-class TestGoogleAnalyticsHook(unittest.TestCase):
-    def setUp(self):
+class TestGoogleAnalyticsHook:
+    def setup_method(self):
         with mock.patch(
             "airflow.providers.google.common.hooks.base_google.GoogleBaseHook.__init__",
             new=mock_base_gcp_hook_default_project_id,
@@ -95,19 +96,16 @@ class TestGoogleAnalyticsHook(unittest.TestCase):
             web_property_id=WEB_PROPERTY_ID,
             web_property_ad_words_link_id=WEB_PROPERTY_AD_WORDS_LINK_ID,
         )
-        # fmt: off
-        get_conn_mock.return_value.management.return_value.webPropertyAdWordsLinks.\
-            return_value.get.return_value.execute.assert_called_once_with(
-                num_retries=num_retries
-            )
 
-        get_conn_mock.return_value.management.return_value.webPropertyAdWordsLinks.\
-            return_value.get.assert_called_once_with(
-                accountId=ACCOUNT_ID,
-                webPropertyId=WEB_PROPERTY_ID,
-                webPropertyAdWordsLinkId=WEB_PROPERTY_AD_WORDS_LINK_ID,
-            )
-        # fmt: on
+        get_conn_mock.return_value.management.return_value.webPropertyAdWordsLinks.return_value.get.return_value.execute.assert_called_once_with(
+            num_retries=num_retries
+        )
+
+        get_conn_mock.return_value.management.return_value.webPropertyAdWordsLinks.return_value.get.assert_called_once_with(
+            accountId=ACCOUNT_ID,
+            webPropertyId=WEB_PROPERTY_ID,
+            webPropertyAdWordsLinkId=WEB_PROPERTY_AD_WORDS_LINK_ID,
+        )
 
     @mock.patch("airflow.providers.google.marketing_platform.hooks.analytics.GoogleAnalyticsHook.get_conn")
     def test_list_ad_words_links(self, get_conn_mock):
@@ -143,15 +141,13 @@ class TestGoogleAnalyticsHook(unittest.TestCase):
         )
 
         media_mock.assert_called_once_with(temp_name, mimetype="application/octet-stream", resumable=True)
-        # fmt: off
-        get_conn_mock.return_value.management.return_value.uploads.return_value.uploadData.\
-            assert_called_once_with(
-                accountId=ACCOUNT_ID,
-                webPropertyId=WEB_PROPERTY_ID,
-                customDataSourceId=DATA_SOURCE,
-                media_body=media_mock.return_value,
-            )
-        # fmt: on
+
+        get_conn_mock.return_value.management.return_value.uploads.return_value.uploadData.assert_called_once_with(
+            accountId=ACCOUNT_ID,
+            webPropertyId=WEB_PROPERTY_ID,
+            customDataSourceId=DATA_SOURCE,
+            media_body=media_mock.return_value,
+        )
 
     @mock.patch("airflow.providers.google.marketing_platform.hooks.analytics.GoogleAnalyticsHook.get_conn")
     def test_delete_upload_data(self, get_conn_mock):
@@ -162,15 +158,13 @@ class TestGoogleAnalyticsHook(unittest.TestCase):
             custom_data_source_id=DATA_SOURCE,
             delete_request_body=body,
         )
-        # fmt: off
-        get_conn_mock.return_value.management.return_value.uploads.return_value.deleteUploadData.\
-            assert_called_once_with(
-                accountId=ACCOUNT_ID,
-                webPropertyId=WEB_PROPERTY_ID,
-                customDataSourceId=DATA_SOURCE,
-                body=body,
-            )
-        # fmt: on
+
+        get_conn_mock.return_value.management.return_value.uploads.return_value.deleteUploadData.assert_called_once_with(
+            accountId=ACCOUNT_ID,
+            webPropertyId=WEB_PROPERTY_ID,
+            customDataSourceId=DATA_SOURCE,
+            body=body,
+        )
 
     @mock.patch("airflow.providers.google.marketing_platform.hooks.analytics.GoogleAnalyticsHook.get_conn")
     def test_list_upload(self, get_conn_mock):

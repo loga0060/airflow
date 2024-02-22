@@ -16,20 +16,25 @@
 # specific language governing permissions and limitations
 # under the License.
 """
-This module provides everything to be able to search in mails for a specific attachment
-and also to download it.
+This module provides everything to search mail for a specific attachment and download it.
+
 It uses the imaplib library that is already integrated in python 3.
 """
+from __future__ import annotations
+
 import email
 import imaplib
 import os
 import re
-from typing import Any, Iterable, List, Optional, Tuple, Type, Union
+import ssl
+from typing import TYPE_CHECKING, Any, Iterable
 
 from airflow.exceptions import AirflowException
 from airflow.hooks.base import BaseHook
-from airflow.models.connection import Connection
 from airflow.utils.log.logging_mixin import LoggingMixin
+
+if TYPE_CHECKING:
+    from airflow.models.connection import Connection
 
 
 class ImapHook(BaseHook):
@@ -43,23 +48,23 @@ class ImapHook(BaseHook):
         that contains the information used to authenticate the client.
     """
 
-    conn_name_attr = 'imap_conn_id'
-    default_conn_name = 'imap_default'
-    conn_type = 'imap'
-    hook_name = 'IMAP'
+    conn_name_attr = "imap_conn_id"
+    default_conn_name = "imap_default"
+    conn_type = "imap"
+    hook_name = "IMAP"
 
     def __init__(self, imap_conn_id: str = default_conn_name) -> None:
         super().__init__()
         self.imap_conn_id = imap_conn_id
-        self.mail_client: Optional[Union[imaplib.IMAP4_SSL, imaplib.IMAP4]] = None
+        self.mail_client: imaplib.IMAP4_SSL | imaplib.IMAP4 | None = None
 
-    def __enter__(self) -> 'ImapHook':
+    def __enter__(self) -> ImapHook:
         return self.get_conn()
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.mail_client.logout()
 
-    def get_conn(self) -> 'ImapHook':
+    def get_conn(self) -> ImapHook:
         """
         Login to the mail server.
 
@@ -67,7 +72,6 @@ class ImapHook(BaseHook):
             to automatically open and close the connection to the mail server.
 
         :return: an authorized ImapHook object.
-        :rtype: ImapHook
         """
         if not self.mail_client:
             conn = self.get_connection(self.imap_conn_id)
@@ -76,25 +80,47 @@ class ImapHook(BaseHook):
 
         return self
 
-    def _build_client(self, conn: Connection) -> Union[imaplib.IMAP4_SSL, imaplib.IMAP4]:
-        IMAP: Union[Type[imaplib.IMAP4_SSL], Type[imaplib.IMAP4]]
-        if conn.extra_dejson.get('use_ssl', True):
-            IMAP = imaplib.IMAP4_SSL
-        else:
-            IMAP = imaplib.IMAP4
+    def _build_client(self, conn: Connection) -> imaplib.IMAP4_SSL | imaplib.IMAP4:
+        mail_client: imaplib.IMAP4_SSL | imaplib.IMAP4
+        use_ssl = conn.extra_dejson.get("use_ssl", True)
+        if use_ssl:
+            from airflow.configuration import conf
 
-        if conn.port:
-            mail_client = IMAP(conn.host, conn.port)
+            extra_ssl_context = conn.extra_dejson.get("ssl_context", None)
+            if extra_ssl_context:
+                ssl_context_string = extra_ssl_context
+            else:
+                ssl_context_string = conf.get("imap", "SSL_CONTEXT", fallback=None)
+            if ssl_context_string is None:
+                ssl_context_string = conf.get("email", "SSL_CONTEXT", fallback=None)
+            if ssl_context_string is None:
+                ssl_context_string = "default"
+            if ssl_context_string == "default":
+                ssl_context = ssl.create_default_context()
+            elif ssl_context_string == "none":
+                ssl_context = None
+            else:
+                raise RuntimeError(
+                    f"The email.ssl_context configuration variable must "
+                    f"be set to 'default' or 'none' and is '{ssl_context_string}'."
+                )
+            if conn.port:
+                mail_client = imaplib.IMAP4_SSL(conn.host, conn.port, ssl_context=ssl_context)
+            else:
+                mail_client = imaplib.IMAP4_SSL(conn.host, ssl_context=ssl_context)
         else:
-            mail_client = IMAP(conn.host)
+            if conn.port:
+                mail_client = imaplib.IMAP4(conn.host, conn.port)
+            else:
+                mail_client = imaplib.IMAP4(conn.host)
 
         return mail_client
 
     def has_mail_attachment(
-        self, name: str, *, check_regex: bool = False, mail_folder: str = 'INBOX', mail_filter: str = 'All'
+        self, name: str, *, check_regex: bool = False, mail_folder: str = "INBOX", mail_filter: str = "All"
     ) -> bool:
         """
-        Checks the mail folder for mails containing attachments with the given name.
+        Check the mail folder for mails containing attachments with the given name.
 
         :param name: The name of the attachment that will be searched for.
         :param check_regex: Checks the name for a regular expression.
@@ -102,12 +128,11 @@ class ImapHook(BaseHook):
         :param mail_filter: If set other than 'All' only specific mails will be checked.
             See :py:meth:`imaplib.IMAP4.search` for details.
         :returns: True if there is an attachment with the given name and False if not.
-        :rtype: bool
         """
         mail_attachments = self._retrieve_mails_attachments_by_name(
             name, check_regex, True, mail_folder, mail_filter
         )
-        return len(mail_attachments) > 0
+        return bool(mail_attachments)
 
     def retrieve_mail_attachments(
         self,
@@ -115,12 +140,12 @@ class ImapHook(BaseHook):
         *,
         check_regex: bool = False,
         latest_only: bool = False,
-        mail_folder: str = 'INBOX',
-        mail_filter: str = 'All',
-        not_found_mode: str = 'raise',
-    ) -> List[Tuple]:
+        mail_folder: str = "INBOX",
+        mail_filter: str = "All",
+        not_found_mode: str = "raise",
+    ) -> list[tuple]:
         """
-        Retrieves mail's attachments in the mail folder by its name.
+        Retrieve mail's attachments in the mail folder by its name.
 
         :param name: The name of the attachment that will be downloaded.
         :param check_regex: Checks the name for a regular expression.
@@ -134,7 +159,6 @@ class ImapHook(BaseHook):
             if set to 'warn' it will only print a warning and
             if set to 'ignore' it won't notify you at all.
         :returns: a list of tuple each containing the attachment filename and its payload.
-        :rtype: a list of tuple
         """
         mail_attachments = self._retrieve_mails_attachments_by_name(
             name, check_regex, latest_only, mail_folder, mail_filter
@@ -152,12 +176,12 @@ class ImapHook(BaseHook):
         *,
         check_regex: bool = False,
         latest_only: bool = False,
-        mail_folder: str = 'INBOX',
-        mail_filter: str = 'All',
-        not_found_mode: str = 'raise',
+        mail_folder: str = "INBOX",
+        mail_filter: str = "All",
+        not_found_mode: str = "raise",
     ) -> None:
         """
-        Downloads mail's attachments in the mail folder by its name to the local directory.
+        Download mail's attachments in the mail folder by its name to the local directory.
 
         :param name: The name of the attachment that will be downloaded.
         :param local_output_directory: The output directory on the local machine
@@ -183,18 +207,16 @@ class ImapHook(BaseHook):
         self._create_files(mail_attachments, local_output_directory)
 
     def _handle_not_found_mode(self, not_found_mode: str) -> None:
-        if not_found_mode == 'raise':
-            raise AirflowException('No mail attachments found!')
-        if not_found_mode == 'warn':
-            self.log.warning('No mail attachments found!')
-        elif not_found_mode == 'ignore':
-            pass  # Do not notify if the attachment has not been found.
-        else:
+        if not_found_mode not in ("raise", "warn", "ignore"):
             self.log.error('Invalid "not_found_mode" %s', not_found_mode)
+        elif not_found_mode == "raise":
+            raise AirflowException("No mail attachments found!")
+        elif not_found_mode == "warn":
+            self.log.warning("No mail attachments found!")
 
     def _retrieve_mails_attachments_by_name(
         self, name: str, check_regex: bool, latest_only: bool, mail_folder: str, mail_filter: str
-    ) -> List:
+    ) -> list:
         if not self.mail_client:
             raise Exception("The 'mail_client' should be initialized before!")
 
@@ -225,25 +247,25 @@ class ImapHook(BaseHook):
     def _fetch_mail_body(self, mail_id: str) -> str:
         if not self.mail_client:
             raise Exception("The 'mail_client' should be initialized before!")
-        _, data = self.mail_client.fetch(mail_id, '(RFC822)')
+        _, data = self.mail_client.fetch(mail_id, "(RFC822)")
         mail_body = data[0][1]  # type: ignore # The mail body is always in this specific location
-        mail_body_str = mail_body.decode('utf-8')  # type: ignore
+        mail_body_str = mail_body.decode("utf-8")  # type: ignore
         return mail_body_str
 
     def _check_mail_body(
         self, response_mail_body: str, name: str, check_regex: bool, latest_only: bool
-    ) -> List[Tuple[Any, Any]]:
+    ) -> list[tuple[Any, Any]]:
         mail = Mail(response_mail_body)
         if mail.has_attachments():
             return mail.get_attachments_by_name(name, check_regex, find_first=latest_only)
         return []
 
-    def _create_files(self, mail_attachments: List, local_output_directory: str) -> None:
+    def _create_files(self, mail_attachments: list, local_output_directory: str) -> None:
         for name, payload in mail_attachments:
             if self._is_symlink(name):
-                self.log.error('Can not create file because it is a symlink!')
+                self.log.error("Can not create file because it is a symlink!")
             elif self._is_escaping_current_directory(name):
-                self.log.error('Can not create file because it is escaping the current directory!')
+                self.log.error("Can not create file because it is escaping the current directory!")
             else:
                 self._create_file(name, payload, local_output_directory)
 
@@ -253,19 +275,19 @@ class ImapHook(BaseHook):
         return os.path.islink(name)
 
     def _is_escaping_current_directory(self, name: str) -> bool:
-        return '../' in name
+        return "../" in name
 
     def _correct_path(self, name: str, local_output_directory: str) -> str:
         return (
             local_output_directory + name
-            if local_output_directory.endswith('/')
-            else local_output_directory + '/' + name
+            if local_output_directory.endswith("/")
+            else local_output_directory + "/" + name
         )
 
     def _create_file(self, name: str, payload: Any, local_output_directory: str) -> None:
         file_path = self._correct_path(name, local_output_directory)
 
-        with open(file_path, 'wb') as file:
+        with open(file_path, "wb") as file:
             file.write(payload)
 
 
@@ -282,25 +304,23 @@ class Mail(LoggingMixin):
 
     def has_attachments(self) -> bool:
         """
-        Checks the mail for a attachments.
+        Check the mail for a attachments.
 
         :returns: True if it has attachments and False if not.
-        :rtype: bool
         """
-        return self.mail.get_content_maintype() == 'multipart'
+        return self.mail.get_content_maintype() == "multipart"
 
     def get_attachments_by_name(
         self, name: str, check_regex: bool, find_first: bool = False
-    ) -> List[Tuple[Any, Any]]:
+    ) -> list[tuple[Any, Any]]:
         """
-        Gets all attachments by name for the mail.
+        Get all attachments by name for the mail.
 
         :param name: The name of the attachment to look for.
         :param check_regex: Checks the name for a regular expression.
         :param find_first: If set to True it will only find the first match and then quit.
         :returns: a list of tuples each containing name and payload
             where the attachments name matches the given name.
-        :rtype: list(tuple)
         """
         attachments = []
 
@@ -310,14 +330,14 @@ class Mail(LoggingMixin):
             )
             if found_attachment:
                 file_name, file_payload = attachment.get_file()
-                self.log.info('Found attachment: %s', file_name)
+                self.log.info("Found attachment: %s", file_name)
                 attachments.append((file_name, file_payload))
                 if find_first:
                     break
 
         return attachments
 
-    def _iterate_attachments(self) -> Iterable['MailPart']:
+    def _iterate_attachments(self) -> Iterable[MailPart]:
         for part in self.mail.walk():
             mail_part = MailPart(part)
             if mail_part.is_attachment():
@@ -336,38 +356,34 @@ class MailPart:
 
     def is_attachment(self) -> bool:
         """
-        Checks if the part is a valid mail attachment.
+        Check if the part is a valid mail attachment.
 
         :returns: True if it is an attachment and False if not.
-        :rtype: bool
         """
-        return self.part.get_content_maintype() != 'multipart' and self.part.get('Content-Disposition')
+        return self.part.get_content_maintype() != "multipart" and self.part.get("Content-Disposition")
 
-    def has_matching_name(self, name: str) -> Optional[Tuple[Any, Any]]:
+    def has_matching_name(self, name: str) -> tuple[Any, Any] | None:
         """
-        Checks if the given name matches the part's name.
+        Check if the given name matches the part's name.
 
         :param name: The name to look for.
         :returns: True if it matches the name (including regular expression).
-        :rtype: tuple
         """
         return re.match(name, self.part.get_filename())  # type: ignore
 
     def has_equal_name(self, name: str) -> bool:
         """
-        Checks if the given name is equal to the part's name.
+        Check if the given name is equal to the part's name.
 
         :param name: The name to look for.
         :returns: True if it is equal to the given name.
-        :rtype: bool
         """
         return self.part.get_filename() == name
 
-    def get_file(self) -> Tuple:
+    def get_file(self) -> tuple:
         """
-        Gets the file including name and payload.
+        Get the file including name and payload.
 
         :returns: the part's name and payload.
-        :rtype: tuple
         """
         return self.part.get_filename(), self.part.get_payload(decode=True)

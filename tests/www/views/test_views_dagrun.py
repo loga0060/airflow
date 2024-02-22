@@ -15,10 +15,9 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-import flask
-import markupsafe
+from __future__ import annotations
+
 import pytest
-import werkzeug
 
 from airflow.models import DagBag, DagRun, TaskInstance
 from airflow.security import permissions
@@ -26,8 +25,10 @@ from airflow.utils import timezone
 from airflow.utils.session import create_session
 from airflow.www.views import DagRunModelView
 from tests.test_utils.api_connexion_utils import create_user, delete_roles, delete_user
-from tests.test_utils.www import check_content_in_response, client_with_login
+from tests.test_utils.www import check_content_in_response, check_content_not_in_response, client_with_login
 from tests.www.views.test_views_tasks import _get_appbuilder_pk_string
+
+pytestmark = pytest.mark.db_test
 
 
 @pytest.fixture(scope="module")
@@ -37,6 +38,7 @@ def client_dr_without_dag_edit(app):
         username="all_dr_permissions_except_dag_edit",
         role_name="all_dr_permissions_except_dag_edit",
         permissions=[
+            (permissions.ACTION_CAN_READ, permissions.RESOURCE_WEBSITE),
             (permissions.ACTION_CAN_READ, permissions.RESOURCE_DAG),
             (permissions.ACTION_CAN_CREATE, permissions.RESOURCE_DAG_RUN),
             (permissions.ACTION_CAN_READ, permissions.RESOURCE_DAG_RUN),
@@ -53,6 +55,32 @@ def client_dr_without_dag_edit(app):
     )
 
     delete_user(app, username="all_dr_permissions_except_dag_edit")  # type: ignore
+    delete_roles(app)
+
+
+@pytest.fixture(scope="module")
+def client_dr_without_dag_run_create(app):
+    create_user(
+        app,
+        username="all_dr_permissions_except_dag_run_create",
+        role_name="all_dr_permissions_except_dag_run_create",
+        permissions=[
+            (permissions.ACTION_CAN_READ, permissions.RESOURCE_WEBSITE),
+            (permissions.ACTION_CAN_READ, permissions.RESOURCE_DAG),
+            (permissions.ACTION_CAN_READ, permissions.RESOURCE_DAG_RUN),
+            (permissions.ACTION_CAN_EDIT, permissions.RESOURCE_DAG_RUN),
+            (permissions.ACTION_CAN_DELETE, permissions.RESOURCE_DAG_RUN),
+            (permissions.ACTION_CAN_ACCESS_MENU, permissions.RESOURCE_DAG_RUN),
+        ],
+    )
+
+    yield client_with_login(
+        app,
+        username="all_dr_permissions_except_dag_run_create",
+        password="all_dr_permissions_except_dag_run_create",
+    )
+
+    delete_user(app, username="all_dr_permissions_except_dag_run_create")  # type: ignore
     delete_roles(app)
 
 
@@ -78,19 +106,11 @@ def reset_dagrun():
 def test_get_dagrun_can_view_dags_without_edit_perms(session, running_dag_run, client_dr_without_dag_edit):
     """Test that a user without dag_edit but with dag_read permission can view the records"""
     assert session.query(DagRun).filter(DagRun.dag_id == running_dag_run.dag_id).count() == 1
-    resp = client_dr_without_dag_edit.get('/dagrun/list/', follow_redirects=True)
-
-    with client_dr_without_dag_edit.application.test_request_context():
-        url = flask.url_for(
-            'Airflow.graph', dag_id=running_dag_run.dag_id, execution_date=running_dag_run.execution_date
-        )
-        dag_url_link = markupsafe.Markup('<a href="{url}">{dag_id}</a>').format(
-            url=url, dag_id=running_dag_run.dag_id
-        )
-    check_content_in_response(dag_url_link, resp)
+    resp = client_dr_without_dag_edit.get("/dagrun/list/", follow_redirects=True)
+    check_content_in_response(running_dag_run.dag_id, resp)
 
 
-def test_create_dagrun_permission_denied(session, client_dr_without_dag_edit):
+def test_create_dagrun_permission_denied(session, client_dr_without_dag_run_create):
     data = {
         "state": "running",
         "dag_id": "example_bash_operator",
@@ -99,8 +119,8 @@ def test_create_dagrun_permission_denied(session, client_dr_without_dag_edit):
         "conf": '{"include": "me"}',
     }
 
-    with pytest.raises(werkzeug.test.ClientRedirectError):
-        client_dr_without_dag_edit.post('/dagrun/add', data=data, follow_redirects=True)
+    resp = client_dr_without_dag_run_create.post("/dagrun/add", data=data, follow_redirects=True)
+    check_content_in_response("Access is Denied", resp)
 
 
 @pytest.fixture()
@@ -124,6 +144,31 @@ def running_dag_run(session):
     return dr
 
 
+@pytest.fixture()
+def completed_dag_run_with_missing_task(session):
+    dag = DagBag().get_dag("example_bash_operator")
+    execution_date = timezone.datetime(2016, 1, 9)
+    dr = dag.create_dagrun(
+        state="success",
+        execution_date=execution_date,
+        data_interval=(execution_date, execution_date),
+        run_id="test_dag_runs_action",
+        session=session,
+    )
+    session.add(dr)
+    tis = [
+        TaskInstance(dag.get_task("runme_0"), run_id=dr.run_id, state="success"),
+        TaskInstance(dag.get_task("runme_1"), run_id=dr.run_id, state="success"),
+        TaskInstance(dag.get_task("also_run_this"), run_id=dr.run_id, state="success"),
+        TaskInstance(dag.get_task("run_after_loop"), run_id=dr.run_id, state="success"),
+        TaskInstance(dag.get_task("this_will_skip"), run_id=dr.run_id, state="success"),
+        TaskInstance(dag.get_task("run_this_last"), run_id=dr.run_id, state="success"),
+    ]
+    session.bulk_save_objects(tis)
+    session.commit()
+    return dag, dr
+
+
 def test_delete_dagrun(session, admin_client, running_dag_run):
     composite_key = _get_appbuilder_pk_string(DagRunModelView, running_dag_run)
     assert session.query(DagRun).filter(DagRun.dag_id == running_dag_run.dag_id).count() == 1
@@ -136,7 +181,7 @@ def test_delete_dagrun_permission_denied(session, running_dag_run, client_dr_wit
 
     assert session.query(DagRun).filter(DagRun.dag_id == running_dag_run.dag_id).count() == 1
     resp = client_dr_without_dag_edit.post(f"/dagrun/delete/{composite_key}", follow_redirects=True)
-    check_content_in_response(f"Access denied for dag_id {running_dag_run.dag_id}", resp)
+    check_content_in_response("Access is Denied", resp)
     assert session.query(DagRun).filter(DagRun.dag_id == running_dag_run.dag_id).count() == 1
 
 
@@ -216,7 +261,7 @@ def test_muldelete_dag_runs_action(session, admin_client, running_dag_run):
         follow_redirects=True,
     )
     assert resp.status_code == 200
-    assert session.query(TaskInstance).count() == 0  # Deletes associated TIs.
+    assert session.query(TaskInstance).count() == 0  # associated TIs are deleted
     assert session.query(DagRun).filter(DagRun.id == dag_run_id).count() == 0
 
 
@@ -232,4 +277,16 @@ def test_set_dag_runs_action_permission_denied(client_dr_without_dag_edit, runni
         data={"action": action, "rowid": [str(running_dag_id)]},
         follow_redirects=True,
     )
-    check_content_in_response(f"Access denied for dag_id {running_dag_run.dag_id}", resp)
+    check_content_in_response("Access is Denied", resp)
+
+
+def test_dag_runs_queue_new_tasks_action(session, admin_client, completed_dag_run_with_missing_task):
+    dag, dag_run = completed_dag_run_with_missing_task
+    resp = admin_client.post(
+        "/dagrun_queued",
+        data={"dag_id": dag.dag_id, "dag_run_id": dag_run.run_id, "confirmed": False},
+    )
+
+    check_content_in_response("runme_2", resp)
+    check_content_not_in_response("runme_1", resp)
+    assert resp.status_code == 200

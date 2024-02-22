@@ -15,9 +15,10 @@
 # specific language governing permissions and limitations
 # under the License.
 """This module contains a link for GCS Storage assets."""
-from typing import TYPE_CHECKING, Optional
+from __future__ import annotations
 
-from airflow.models import BaseOperator
+from typing import TYPE_CHECKING
+
 from airflow.providers.google.cloud.links.base import BaseGoogleLink
 
 BASE_LINK = "https://console.cloud.google.com"
@@ -25,18 +26,19 @@ GCS_STORAGE_LINK = BASE_LINK + "/storage/browser/{uri};tab=objects?project={proj
 GCS_FILE_DETAILS_LINK = BASE_LINK + "/storage/browser/_details/{uri};tab=live_object?project={project_id}"
 
 if TYPE_CHECKING:
+    from airflow.models import BaseOperator
     from airflow.utils.context import Context
 
 
 class StorageLink(BaseGoogleLink):
-    """Helper class for constructing GCS Storage link"""
+    """Helper class for constructing GCS Storage link."""
 
     name = "GCS Storage"
     key = "storage_conf"
     format_str = GCS_STORAGE_LINK
 
     @staticmethod
-    def persist(context: "Context", task_instance, uri: str, project_id: Optional[str]):
+    def persist(context: Context, task_instance, uri: str, project_id: str | None):
         task_instance.xcom_push(
             context=context,
             key=StorageLink.key,
@@ -45,14 +47,14 @@ class StorageLink(BaseGoogleLink):
 
 
 class FileDetailsLink(BaseGoogleLink):
-    """Helper class for constructing GCS file details link"""
+    """Helper class for constructing GCS file details link."""
 
     name = "GCS File Details"
     key = "file_details"
     format_str = GCS_FILE_DETAILS_LINK
 
     @staticmethod
-    def persist(context: "Context", task_instance: BaseOperator, uri: str, project_id: Optional[str]):
+    def persist(context: Context, task_instance: BaseOperator, uri: str, project_id: str | None):
         task_instance.xcom_push(
             context=context,
             key=FileDetailsLink.key,

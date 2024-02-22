@@ -21,7 +21,23 @@ name: Apache Druid
 description: |
   `Apache Druid <https://druid.apache.org/>`__.
 
+state: ready
+source-date-epoch: 1707636203
+# note that those versions are maintained by release manager - do not update them manually
 versions:
+  - 3.8.1
+  - 3.8.0
+  - 3.7.0
+  - 3.6.0
+  - 3.5.0
+  - 3.4.2
+  - 3.4.1
+  - 3.4.0
+  - 3.3.1
+  - 3.3.0
+  - 3.2.1
+  - 3.2.0
+  - 3.1.0
   - 3.0.0
   - 2.3.3
   - 2.3.2
@@ -37,7 +53,8 @@ versions:
   - 1.0.0
 
 dependencies:
-  - apache-airflow>=2.2.0
+  - apache-airflow>=2.6.0
+  - apache-airflow-providers-common-sql>=1.3.1
   - pydruid>=0.4.1
 
 integrations:

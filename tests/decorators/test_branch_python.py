@@ -15,15 +15,21 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-
+from __future__ import annotations
 
 import pytest
 
 from airflow.decorators import task
 from airflow.utils.state import State
 
+pytestmark = pytest.mark.db_test
+
 
 class Test_BranchPythonDecoratedOperator:
+    # when run in "Parallel" test run environment, sometimes this test runs for a long time
+    # because creating virtualenv and starting new Python interpreter creates a lot of IO/contention
+    # possibilities. So we are increasing the timeout for this test to 3x of the default timeout
+    @pytest.mark.execution_timeout(180)
     @pytest.mark.parametrize("branch_task_name", ["task_1", "task_2"])
     def test_branch_one(self, dag_maker, branch_task_name):
         @task

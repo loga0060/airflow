@@ -15,18 +15,20 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-
+from __future__ import annotations
 
 from unittest.mock import Mock, patch
 
 import pytest
-from freezegun import freeze_time
+import time_machine
 
 from airflow import settings
 from airflow.models import DagRun, TaskInstance
 from airflow.ti_deps.deps.runnable_exec_date_dep import RunnableExecDateDep
 from airflow.utils.timezone import datetime
 from airflow.utils.types import DagRunType
+
+pytestmark = pytest.mark.db_test
 
 
 @pytest.fixture(autouse=True, scope="function")
@@ -36,9 +38,9 @@ def clean_db(session):
     session.query(TaskInstance).delete()
 
 
-@freeze_time('2016-11-01')
+@time_machine.travel("2016-11-01")
 @pytest.mark.parametrize(
-    "allow_trigger_in_future,schedule_interval,execution_date,is_met",
+    "allow_trigger_in_future,schedule,execution_date,is_met",
     [
         (True, None, datetime(2016, 11, 3), True),
         (True, "@daily", datetime(2016, 11, 3), False),
@@ -53,20 +55,20 @@ def test_exec_date_dep(
     session,
     create_dummy_dag,
     allow_trigger_in_future,
-    schedule_interval,
+    schedule,
     execution_date,
     is_met,
 ):
     """
-    If the dag's execution date is in the future but (allow_trigger_in_future=False or not schedule_interval)
+    If the dag's execution date is in the future but (allow_trigger_in_future=False or not schedule)
     this dep should fail
     """
-    with patch.object(settings, 'ALLOW_FUTURE_EXEC_DATES', allow_trigger_in_future):
+    with patch.object(settings, "ALLOW_FUTURE_EXEC_DATES", allow_trigger_in_future):
         create_dummy_dag(
-            'test_localtaskjob_heartbeat',
+            "test_localtaskjob_heartbeat",
             start_date=datetime(2015, 1, 1),
             end_date=datetime(2016, 11, 5),
-            schedule_interval=schedule_interval,
+            schedule=schedule,
             with_dagrun_type=DagRunType.MANUAL,
             session=session,
         )
@@ -74,16 +76,16 @@ def test_exec_date_dep(
         assert RunnableExecDateDep().is_met(ti=ti) == is_met
 
 
-@freeze_time('2016-01-01')
+@time_machine.travel("2016-01-01")
 def test_exec_date_after_end_date(session, dag_maker, create_dummy_dag):
     """
     If the dag's execution date is in the future this dep should fail
     """
     create_dummy_dag(
-        'test_localtaskjob_heartbeat',
+        "test_localtaskjob_heartbeat",
         start_date=datetime(2015, 1, 1),
         end_date=datetime(2016, 11, 5),
-        schedule_interval=None,
+        schedule=None,
         with_dagrun_type=DagRunType.MANUAL,
         session=session,
     )

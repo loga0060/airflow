@@ -19,10 +19,18 @@
 ``apache-airflow-providers-salesforce``
 =======================================
 
-Content
--------
 
 .. toctree::
+    :hidden:
+    :maxdepth: 1
+    :caption: Basics
+
+    Home <self>
+    Changelog <changelog>
+    Security <security>
+
+.. toctree::
+    :hidden:
     :maxdepth: 1
     :caption: Guides
 
@@ -30,6 +38,7 @@ Content
     Operators <operators/index>
 
 .. toctree::
+    :hidden:
     :maxdepth: 1
     :caption: References
 
@@ -37,15 +46,17 @@ Content
 
 .. toctree::
     :hidden:
+    :maxdepth: 1
     :caption: System tests
 
     System Tests <_api/tests/system/providers/salesforce/index>
 
 .. toctree::
+    :hidden:
     :maxdepth: 1
     :caption: Resources
 
-    Example DAGs <https://github.com/apache/airflow/tree/providers-salesforce/4.0.0/tests/system/providers/salesforce>
+    Example DAGs <https://github.com/apache/airflow/tree/providers-salesforce/|version|/tests/system/providers/salesforce>
     PyPI Repository <https://pypi.org/project/apache-airflow-providers-salesforce/>
     Installing from sources <installing-providers-from-sources>
 
@@ -53,6 +64,7 @@ Content
 
 
 .. toctree::
+    :hidden:
     :maxdepth: 1
     :caption: Commits
 
@@ -65,7 +77,7 @@ Package apache-airflow-providers-salesforce
 `Salesforce <https://www.salesforce.com/>`__
 
 
-Release: 4.0.0
+Release: 5.6.2
 
 Provider package
 ----------------
@@ -83,41 +95,12 @@ for the minimum Airflow version supported) via
 Requirements
 ------------
 
-=======================  ==================
-PIP package              Version required
-=======================  ==================
-``apache-airflow``       ``>=2.2.0``
-``pandas``               ``>=0.17.1``
-``simple-salesforce``    ``>=1.0.0``
-``tableauserverclient``
-=======================  ==================
+The minimum Apache Airflow version supported by this provider package is ``2.6.0``.
 
-Cross provider package dependencies
------------------------------------
-
-Those are dependencies that might be needed in order to use all the features of the package.
-You need to install the specified provider packages in order to use them.
-
-You can install such cross-provider dependencies when installing from PyPI. For example:
-
-.. code-block:: bash
-
-    pip install apache-airflow-providers-salesforce[tableau]
-
-
-======================================================================================================  ===========
-Dependent package                                                                                       Extra
-======================================================================================================  ===========
-`apache-airflow-providers-tableau <https://airflow.apache.org/docs/apache-airflow-providers-tableau>`_  ``tableau``
-======================================================================================================  ===========
-
-Downloading official packages
------------------------------
-
-You can download officially released packages and verify their checksums and signatures from the
-`Official Apache Download site <https://downloads.apache.org/airflow/providers/>`_
-
-* `The apache-airflow-providers-salesforce 4.0.0 sdist package <https://downloads.apache.org/airflow/providers/apache-airflow-providers-salesforce-4.0.0.tar.gz>`_ (`asc <https://downloads.apache.org/airflow/providers/apache-airflow-providers-salesforce-4.0.0.tar.gz.asc>`__, `sha512 <https://downloads.apache.org/airflow/providers/apache-airflow-providers-salesforce-4.0.0.tar.gz.sha512>`__)
-* `The apache-airflow-providers-salesforce 4.0.0 wheel package <https://downloads.apache.org/airflow/providers/apache_airflow_providers_salesforce-4.0.0-py3-none-any.whl>`_ (`asc <https://downloads.apache.org/airflow/providers/apache_airflow_providers_salesforce-4.0.0-py3-none-any.whl.asc>`__, `sha512 <https://downloads.apache.org/airflow/providers/apache_airflow_providers_salesforce-4.0.0-py3-none-any.whl.sha512>`__)
-
-.. include:: ../../airflow/providers/salesforce/CHANGELOG.rst
+=====================  ==================
+PIP package            Version required
+=====================  ==================
+``apache-airflow``     ``>=2.6.0``
+``simple-salesforce``  ``>=1.0.0``
+``pandas``             ``>=1.2.5``
+=====================  ==================

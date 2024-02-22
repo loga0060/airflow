@@ -14,17 +14,19 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-
 """
 This module contains the unit tests for the helper methods included in the Amazon System Tests found at
 tests/system/providers/amazon/aws/utils/__init__.py
 """
-import io
+from __future__ import annotations
+
 import os
 import sys
+from io import StringIO
 from unittest.mock import ANY, patch
 
 import pytest
+from moto import mock_aws
 
 from tests.system.providers.amazon.aws import utils
 from tests.system.providers.amazon.aws.utils import (
@@ -38,27 +40,21 @@ from tests.system.providers.amazon.aws.utils import (
     set_env_id,
 )
 
-try:
-    from moto import mock_ssm
-except ImportError:
-    mock_ssm = None
+TEST_NAME: str = "example_test"
+ANY_STR: str = "any"
 
-TEST_NAME: str = 'example_test'
-ANY_STR: str = 'any'
-
-ENV_VALUE: str = 'foo'
-SSM_VALUE: str = 'bar'
-DEFAULT_VALUE: str = 'baz'
+ENV_VALUE: str = "foo"
+SSM_VALUE: str = "bar"
+DEFAULT_VALUE: str = "baz"
 
 
 @pytest.fixture(autouse=True)
 def provide_test_name():
-    with patch.object(utils, '_get_test_name', return_value=TEST_NAME) as name:
+    with patch.object(utils, "_get_test_name", return_value=TEST_NAME) as name:
         yield name
 
 
-@pytest.mark.skipif(mock_ssm is None, reason='mock_ssm package not present')
-@mock_ssm
+@mock_aws
 class TestAmazonSystemTestHelpers:
     FETCH_VARIABLE_TEST_CASES = [
         # Format is:
@@ -74,13 +70,13 @@ class TestAmazonSystemTestHelpers:
     ]
 
     @pytest.mark.parametrize(
-        'env_value, ssm_value, default_value, expected_result', FETCH_VARIABLE_TEST_CASES
+        "env_value, ssm_value, default_value, expected_result", FETCH_VARIABLE_TEST_CASES
     )
-    @patch.object(os, 'getenv')
+    @patch.object(os, "getenv")
     def test_fetch_variable_success(
         self, mock_getenv, env_value, ssm_value, default_value, expected_result
     ) -> None:
-        mock_getenv.return_value = env_value if env_value else ssm_value
+        mock_getenv.return_value = env_value or ssm_value
 
         result = utils.fetch_variable(ANY, default_value) if default_value else utils.fetch_variable(ANY_STR)
 
@@ -95,26 +91,26 @@ class TestAmazonSystemTestHelpers:
 
     ENV_ID_TEST_CASES = [
         # Happy Cases
-        ('ABCD', True),
-        ('AbCd', True),
-        ('abcd', True),
-        ('ab12', True),
+        ("ABCD", True),
+        ("AbCd", True),
+        ("abcd", True),
+        ("ab12", True),
         # Failure Cases
         # Must be alphanumeric
-        ('not_alphanumeric', False),
+        ("not_alphanumeric", False),
         # Can not be empty
-        ('', False),
+        ("", False),
         # Must start with a letter
-        ('1234', False),
-        ('12ab', False),
-        ('12AB', False),
-        ('12Ab', False),
+        ("1234", False),
+        ("12ab", False),
+        ("12AB", False),
+        ("12Ab", False),
     ]
 
-    @pytest.mark.parametrize('env_id, is_valid', ENV_ID_TEST_CASES)
+    @pytest.mark.parametrize("env_id, is_valid", ENV_ID_TEST_CASES)
     def test_validate_env_id_success(self, env_id, is_valid):
         if is_valid:
-            captured_output = io.StringIO()
+            captured_output = StringIO()
             sys.stdout = captured_output
 
             result = _validate_env_id(env_id)

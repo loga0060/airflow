@@ -15,35 +15,37 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-import warnings
-from datetime import datetime
+from __future__ import annotations
 
-from airflow.models import DAG
+import warnings
+
+from airflow.models.dag import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
 from airflow.operators.subdag import SubDagOperator
+from airflow.utils import timezone
 
-DEFAULT_DATE = datetime(2016, 1, 1)
+DEFAULT_DATE = timezone.datetime(2016, 1, 1)
 
-default_args = {'owner': 'airflow', 'start_date': DEFAULT_DATE, 'run_as_user': 'airflow_test_user'}
+default_args = {"owner": "airflow", "start_date": DEFAULT_DATE, "run_as_user": "airflow_test_user"}
 
-dag = DAG(dag_id='impersonation_subdag', default_args=default_args)
+dag = DAG(dag_id="impersonation_subdag", default_args=default_args)
 
 
 def print_today():
-    print(f'Today is {datetime.utcnow()}')
+    print(f"Today is {timezone.utcnow()}")
 
 
-subdag = DAG('impersonation_subdag.test_subdag_operation', default_args=default_args)
+subdag = DAG("impersonation_subdag.test_subdag_operation", default_args=default_args)
 
 
-PythonOperator(python_callable=print_today, task_id='exec_python_fn', dag=subdag)
+PythonOperator(python_callable=print_today, task_id="exec_python_fn", dag=subdag)
 
 
-BashOperator(task_id='exec_bash_operator', bash_command='echo "Running within SubDag"', dag=subdag)
+BashOperator(task_id="exec_bash_operator", bash_command='echo "Running within SubDag"', dag=subdag)
 
 
 with warnings.catch_warnings(record=True):
     subdag_operator = SubDagOperator(
-        task_id='test_subdag_operation', subdag=subdag, mode='reschedule', poke_interval=1, dag=dag
+        task_id="test_subdag_operation", subdag=subdag, mode="reschedule", poke_interval=1, dag=dag
     )

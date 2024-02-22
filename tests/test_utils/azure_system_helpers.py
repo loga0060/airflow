@@ -14,6 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
 
 import json
 import os
@@ -35,8 +36,8 @@ AZURE_DAG_FOLDER = os.path.join(
 )
 WASB_CONNECTION_ID = os.environ.get("WASB_CONNECTION_ID", "wasb_default")
 
-DATA_LAKE_CONNECTION_ID = os.environ.get("AZURE_DATA_LAKE_CONNECTION_ID", 'azure_data_lake_default')
-DATA_LAKE_CONNECTION_TYPE = os.environ.get("AZURE_DATA_LAKE_CONNECTION_TYPE", 'azure_data_lake')
+DATA_LAKE_CONNECTION_ID = os.environ.get("AZURE_DATA_LAKE_CONNECTION_ID", "azure_data_lake_default")
+DATA_LAKE_CONNECTION_TYPE = os.environ.get("AZURE_DATA_LAKE_CONNECTION_TYPE", "azure_data_lake")
 
 
 @contextmanager
@@ -56,7 +57,7 @@ def provide_wasb_default_connection(key_file_path: str):
         host=creds.get("host", None),
         login=creds.get("login", None),
         password=creds.get("password", None),
-        extra=json.dumps(creds.get('extra', None)),
+        extra=json.dumps(creds.get("extra", None)),
     )
     with patch_environ({f"AIRFLOW_CONN_{conn.conn_id.upper()}": conn.get_uri()}):
         yield
@@ -68,7 +69,7 @@ def provide_azure_data_lake_default_connection(key_file_path: str):
     Context manager to provide a temporary value for azure_data_lake_default connection
     :param key_file_path: Path to file with azure_data_lake_default credentials .json file.
     """
-    required_fields = {'login', 'password', 'extra'}
+    required_fields = {"login", "password", "extra"}
 
     if not key_file_path.endswith(".json"):
         raise AirflowException("Use a JSON key file.")
@@ -84,7 +85,7 @@ def provide_azure_data_lake_default_connection(key_file_path: str):
         host=creds.get("host", None),
         login=creds.get("login", None),
         password=creds.get("password", None),
-        extra=json.dumps(creds.get('extra', None)),
+        extra=json.dumps(creds.get("extra", None)),
     )
     with patch_environ({f"AIRFLOW_CONN_{conn.conn_id.upper()}": conn.get_uri()}):
         yield
@@ -112,12 +113,14 @@ class AzureSystemTest(SystemTest):
     @classmethod
     def delete_share(cls, share_name: str, azure_fileshare_conn_id: str):
         hook = AzureFileShareHook(azure_fileshare_conn_id=azure_fileshare_conn_id)
-        hook.delete_share(share_name)
+        hook.delete_share(share_name=share_name)
 
     @classmethod
     def create_directory(cls, share_name: str, azure_fileshare_conn_id: str, directory: str):
-        hook = AzureFileShareHook(azure_fileshare_conn_id=azure_fileshare_conn_id)
-        hook.create_directory(share_name=share_name, directory_name=directory)
+        hook = AzureFileShareHook(
+            azure_fileshare_conn_id=azure_fileshare_conn_id, share_name=share_name, directory_path=directory
+        )
+        hook.create_directory()
 
     @classmethod
     def upload_file_from_string(
@@ -126,30 +129,25 @@ class AzureSystemTest(SystemTest):
         share_name: str,
         azure_fileshare_conn_id: str,
         file_name: str,
-        directory: str,
     ):
-        hook = AzureFileShareHook(azure_fileshare_conn_id=azure_fileshare_conn_id)
-        hook.load_string(
-            string_data=string_data,
-            share_name=share_name,
-            directory_name=directory,
-            file_name=file_name,
+        hook = AzureFileShareHook(
+            azure_fileshare_conn_id=azure_fileshare_conn_id, share_name=share_name, file_path=file_name
         )
+        hook.load_data(string_data=string_data)
 
     @classmethod
     def prepare_share(cls, share_name: str, azure_fileshare_conn_id: str, file_name: str, directory: str):
         """
         Create share with a file in given directory. If directory is None, file is in root dir.
         """
-        cls.create_share(share_name=share_name, azure_fileshare_conn_id=azure_fileshare_conn_id)
-        cls.create_directory(
-            share_name=share_name, azure_fileshare_conn_id=azure_fileshare_conn_id, directory=directory
-        )
-        string_data = "".join(random.choice(string.ascii_letters) for _ in range(1024))
-        cls.upload_file_from_string(
-            string_data=string_data,
-            share_name=share_name,
+        hook = AzureFileShareHook(
             azure_fileshare_conn_id=azure_fileshare_conn_id,
-            file_name=file_name,
-            directory=directory,
+            share_name=share_name,
+            directory_path=directory,
+            file_path=file_name,
         )
+        hook.create_share(share_name)
+        hook.create_directory()
+
+        string_data = "".join(random.choices(string.ascii_letters, k=1024))
+        hook.load_data(string_data)

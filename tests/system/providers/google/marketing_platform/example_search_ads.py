@@ -18,10 +18,14 @@
 """
 Example Airflow DAG that shows how to use SearchAds.
 """
+from __future__ import annotations
+
 import os
 from datetime import datetime
+from typing import cast
 
-from airflow import models
+from airflow.models.dag import DAG
+from airflow.models.xcom_arg import XComArg
 from airflow.providers.google.marketing_platform.operators.search_ads import (
     GoogleSearchAdsDownloadReportOperator,
     GoogleSearchAdsInsertReportOperator,
@@ -47,9 +51,9 @@ REPORT = {
 }
 # [END howto_search_ads_env_variables]
 
-with models.DAG(
+with DAG(
     DAG_ID,
-    schedule_interval='@once',  # Override to match your needs,
+    schedule="@once",  # Override to match your needs,
     start_date=datetime(2021, 1, 1),
     catchup=False,
     tags=["example"],
@@ -59,7 +63,7 @@ with models.DAG(
     # [END howto_search_ads_generate_report_operator]
 
     # [START howto_search_ads_get_report_id]
-    report_id = generate_report.output["report_id"]
+    report_id = cast(str, XComArg(generate_report, key="report_id"))
     # [END howto_search_ads_get_report_id]
 
     # [START howto_search_ads_get_report_operator]

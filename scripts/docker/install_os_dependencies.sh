@@ -149,7 +149,7 @@ if [[ "${INSTALLATION_TYPE}" == "RUNTIME" ]]; then
     #install_docker_cli
 
 else
-    get_dev_apt_deps
+    #get_dev_apt_deps
     #install_debian_dev_dependencies
     #install_docker_cli
 fi

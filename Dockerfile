@@ -76,7 +76,7 @@ COPY <<"EOF" /install_os_dependencies.sh
 #!/usr/bin/env bash
 set -euo pipefail
 
-DOCKER_CLI_VERSION=24.0.6
+DOCKER_CLI_VERSION=25.0.3
 
 if [[ "$#" != 1 ]]; then
     echo "ERROR! There should be 'runtime' or 'dev' parameter passed as argument.".
@@ -205,9 +205,9 @@ if [[ "${INSTALLATION_TYPE}" == "RUNTIME" ]]; then
     install_docker_cli
 
 else
-    get_dev_apt_deps
-    install_debian_dev_dependencies
-    install_docker_cli
+    #get_dev_apt_deps
+    #install_debian_dev_dependencies
+    #install_docker_cli
 fi
 EOF
 
@@ -1238,5 +1238,5 @@ ENV DEV_APT_DEPS=${DEV_APT_DEPS} \
     ADDITIONAL_DEV_APT_ENV=${ADDITIONAL_DEV_APT_ENV}
 
 COPY --from=scripts install_os_dependencies.sh /scripts/docker/
-RUN bash /scripts/docker/install_os_dependencies.sh dev
+RUN bash ./scripts/docker/install_os_dependencies.sh dev
 

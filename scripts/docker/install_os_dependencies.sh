@@ -18,7 +18,7 @@
 # shellcheck shell=bash
 set -euo pipefail
 
-DOCKER_CLI_VERSION=25.0.3
+DOCKER_CLI_VERSION=24.0.6
 
 if [[ "$#" != 1 ]]; then
     echo "ERROR! There should be 'runtime' or 'dev' parameter passed as argument.".
@@ -34,15 +34,13 @@ else
     exit 1
 fi
 
-#freetds-bin freetds-dev git gosu graphviz graphviz-dev krb5-user ldap-utils libffi-dev libgeos-dev \
-#libkrb5-dev libldap2-dev libleveldb1d libleveldb-dev libsasl2-2 libsasl2-dev libsasl2-modules \
-#libssl-dev libxmlsec1 libxmlsec1-dev locales lsb-release openssh-client pkgconf sasl2-bin \
-#software-properties-common sqlite3 sudo unixodbc unixodbc-dev zlib1g-dev
-#apt-utils build-essential ca-certificates dirmngr
-
 function get_dev_apt_deps() {
     if [[ "${DEV_APT_DEPS=}" == "" ]]; then
-        DEV_APT_DEPS="apt-transport-https"
+        DEV_APT_DEPS="apt-transport-https apt-utils build-essential ca-certificates dirmngr \
+freetds-bin freetds-dev git gosu graphviz graphviz-dev krb5-user ldap-utils libffi-dev libgeos-dev \
+libkrb5-dev libldap2-dev libleveldb1d libleveldb-dev libsasl2-2 libsasl2-dev libsasl2-modules \
+libssl-dev libxmlsec1 libxmlsec1-dev locales lsb-release openssh-client pkgconf sasl2-bin \
+software-properties-common sqlite3 sudo unixodbc unixodbc-dev zlib1g-dev"
         export DEV_APT_DEPS
     fi
 }
@@ -145,11 +143,11 @@ function install_debian_runtime_dependencies() {
 
 if [[ "${INSTALLATION_TYPE}" == "RUNTIME" ]]; then
     get_runtime_apt_deps
-    #install_debian_runtime_dependencies
-    #install_docker_cli
+    install_debian_runtime_dependencies
+    install_docker_cli
 
 else
-    #get_dev_apt_deps
-    #install_debian_dev_dependencies
-    #install_docker_cli
+    get_dev_apt_deps
+    install_debian_dev_dependencies
+    install_docker_cli
 fi

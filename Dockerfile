@@ -205,9 +205,8 @@ if [[ "${INSTALLATION_TYPE}" == "RUNTIME" ]]; then
     install_docker_cli
 
 else
-    #get_dev_apt_deps
-    #install_debian_dev_dependencies
-    #install_docker_cli
+    get_dev_apt_deps
+    install_debian_dev_dependencies
 fi
 EOF
 
@@ -1238,5 +1237,5 @@ ENV DEV_APT_DEPS=${DEV_APT_DEPS} \
     ADDITIONAL_DEV_APT_ENV=${ADDITIONAL_DEV_APT_ENV}
 
 COPY --from=scripts install_os_dependencies.sh /scripts/docker/
-RUN bash /scripts/docker/install_os_dependencies.sh dev
+RUN bash ./scripts/docker/install_os_dependencies.sh dev
 

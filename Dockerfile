@@ -1238,5 +1238,5 @@ ENV DEV_APT_DEPS=${DEV_APT_DEPS} \
     ADDITIONAL_DEV_APT_ENV=${ADDITIONAL_DEV_APT_ENV}
 
 COPY --from=scripts install_os_dependencies.sh /scripts/docker/
-RUN bash ./scripts/docker/install_os_dependencies.sh dev
+RUN bash /scripts/docker/install_os_dependencies.sh dev
 

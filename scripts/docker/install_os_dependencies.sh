@@ -18,7 +18,7 @@
 # shellcheck shell=bash
 set -euo pipefail
 
-DOCKER_CLI_VERSION=24.0.6
+DOCKER_CLI_VERSION=25.0.3
 
 if [[ "$#" != 1 ]]; then
     echo "ERROR! There should be 'runtime' or 'dev' parameter passed as argument.".
@@ -37,12 +37,12 @@ fi
 #freetds-bin freetds-dev git gosu graphviz graphviz-dev krb5-user ldap-utils libffi-dev libgeos-dev \
 #libkrb5-dev libldap2-dev libleveldb1d libleveldb-dev libsasl2-2 libsasl2-dev libsasl2-modules \
 #libssl-dev libxmlsec1 libxmlsec1-dev locales lsb-release openssh-client pkgconf sasl2-bin \
-#
+#software-properties-common sqlite3 sudo unixodbc unixodbc-dev zlib1g-dev
+#apt-utils build-essential ca-certificates dirmngr
 
 function get_dev_apt_deps() {
     if [[ "${DEV_APT_DEPS=}" == "" ]]; then
-        DEV_APT_DEPS="apt-transport-https apt-utils build-essential ca-certificates dirmngr \
-        software-properties-common sqlite3 sudo unixodbc unixodbc-dev zlib1g-dev"
+        DEV_APT_DEPS="apt-transport-https"
         export DEV_APT_DEPS
     fi
 }

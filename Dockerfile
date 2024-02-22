@@ -1219,3 +1219,24 @@ FROM ${PYTHON_BASE_IMAGE} as airflow-build-image
 # xtrace - to show commands executed)
 SHELL ["/bin/bash", "-o", "pipefail", "-o", "errexit", "-o", "nounset", "-o", "nolog", "-c"]
 
+ARG PYTHON_BASE_IMAGE
+ENV PYTHON_BASE_IMAGE=${PYTHON_BASE_IMAGE} \
+    DEBIAN_FRONTEND=noninteractive LANGUAGE=C.UTF-8 LANG=C.UTF-8 LC_ALL=C.UTF-8 \
+    LC_CTYPE=C.UTF-8 LC_MESSAGES=C.UTF-8 \
+    PIP_CACHE_DIR=/tmp/.cache/pip
+
+ARG DEV_APT_DEPS=""
+ARG ADDITIONAL_DEV_APT_DEPS=""
+ARG DEV_APT_COMMAND=""
+ARG ADDITIONAL_DEV_APT_COMMAND=""
+ARG ADDITIONAL_DEV_APT_ENV=""
+
+ENV DEV_APT_DEPS=${DEV_APT_DEPS} \
+    ADDITIONAL_DEV_APT_DEPS=${ADDITIONAL_DEV_APT_DEPS} \
+    DEV_APT_COMMAND=${DEV_APT_COMMAND} \
+    ADDITIONAL_DEV_APT_COMMAND=${ADDITIONAL_DEV_APT_COMMAND} \
+    ADDITIONAL_DEV_APT_ENV=${ADDITIONAL_DEV_APT_ENV}
+
+COPY --from=scripts install_os_dependencies.sh /scripts/docker/
+RUN bash /scripts/docker/install_os_dependencies.sh dev
+
